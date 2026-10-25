@@ -43,6 +43,11 @@ clap = { version = "4", features = ["derive"] }
 sysinfo = "0.33"
 tempfile = "3"
 
+# Dependencies don't need debug info; this sharply cuts compile memory and target/ size
+# (Tauri pulls in very large crates such as `windows`).
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

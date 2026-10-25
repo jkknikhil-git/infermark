@@ -5,10 +5,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
-use infermark_core::{packs, paths, plan, profiles, run, Registry, RunEvent};
+use infermark_core::{packs, paths, plan, profiles, run as run_benchmark, Registry, RunEvent};
 use infermark_sdk::{HardwareInfo, ModuleStatus, PlanEntry, RunResult};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Default)]
 struct AppState {
@@ -72,7 +72,7 @@ fn start_run(key: String, app: AppHandle, state: State<'_, AppState>) -> CmdResu
         let on_event = move |e: RunEvent| {
             let _ = emitter.emit("run-event", &e);
         };
-        let result = run(&profile, &Registry::builtin(), &hw, &on_event, &cancel);
+        let result = run_benchmark(&profile, &Registry::builtin(), &hw, &on_event, &cancel);
         match save_result(&result) {
             Ok(path) => {
                 let _ = app.emit("run-finished", summarize(&path, &result));
@@ -150,7 +150,7 @@ fn list_results() -> Vec<ResultSummary> {
             Some(summarize(&p, &r))
         })
         .collect();
-    out.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    out.sort_by_key(|r| std::cmp::Reverse(r.started_at));
     out
 }
 
