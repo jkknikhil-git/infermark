@@ -10,6 +10,8 @@ rust-version.workspace = true
 
 [dependencies]
 infermark-sdk.workspace = true
+infermark-models.workspace = true
+infermark-engine.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 serde.workspace = true
@@ -21,6 +23,7 @@ chrono.workspace = true
 uuid.workspace = true
 dirs.workspace = true
 regex = "1"
+url.workspace = true
 
 [dev-dependencies]
 infermark-hwprobe.workspace = true

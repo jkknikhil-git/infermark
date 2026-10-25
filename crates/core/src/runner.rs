@@ -9,7 +9,7 @@ use infermark_sdk::{
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::{plan, Registry};
+use crate::{plan, privacy, Registry};
 
 /// Live updates while a run is in progress (forwarded to the CLI progress bar or the app).
 #[derive(Debug, Clone, Serialize)]
@@ -80,6 +80,8 @@ pub fn run(
                     hardware,
                     settings,
                     run: &profile.run,
+                    profile,
+                    earlier: &records,
                     progress: &progress,
                     cancel,
                 };
@@ -87,6 +89,9 @@ pub fn run(
                     Ok(output) => (ModuleStatus::Completed, output),
                     Err(ModuleError::Cancelled) => {
                         (ModuleStatus::Cancelled, ModuleOutput::default())
+                    }
+                    Err(ModuleError::Skipped(reason)) => {
+                        (ModuleStatus::Skipped { reason }, ModuleOutput::default())
                     }
                     Err(e) => (
                         ModuleStatus::Failed {
@@ -99,6 +104,20 @@ pub fn run(
             (PlanStatus::Planned, None) => unreachable!("planner only plans registered modules"),
         };
 
+        // Engine messages can contain local paths (and so the account name): strip them.
+        let status = match status {
+            ModuleStatus::Failed { error } => ModuleStatus::Failed {
+                error: privacy::redact(&error),
+            },
+            ModuleStatus::Skipped { reason } => ModuleStatus::Skipped {
+                reason: privacy::redact(&reason),
+            },
+            other => other,
+        };
+        let mut output = output;
+        for note in &mut output.notes {
+            *note = privacy::redact(note);
+        }
         let record = ModuleRecord {
             module_id: id,
             status,

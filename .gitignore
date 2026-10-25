@@ -8,7 +8,7 @@ dist/
 *.tsbuildinfo
 
 # Models, results and local data (never commit weights)
-models/
+/models/
 *.gguf
 *.safetensors
 *.onnx

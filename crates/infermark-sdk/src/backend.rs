@@ -47,6 +47,10 @@ pub struct GenerateRequest {
     pub stop: Vec<String>,
     /// Allow reasoning output for models that support it.
     pub think: bool,
+    /// Keep generating past the end-of-text token so speed tests always produce
+    /// `max_tokens` tokens. Backends that can't do this generate as many as the model wants.
+    #[serde(default)]
+    pub ignore_eos: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

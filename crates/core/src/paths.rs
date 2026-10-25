@@ -5,6 +5,9 @@
 //!   profiles/   your own *.toml profiles
 //!   packs/      installed test packs (one folder each)
 //!   results/    result JSON files
+//!   settings.toml
+//!   models/     downloaded models    } these two live in the storage folder, which can be
+//!   engines/    llama.cpp builds     } moved to a bigger drive (see `settings`)
 //! ```
 //!
 //! `INFERMARK_HOME` overrides `~/.infermark`; `INFERMARK_PACKS_DIR` adds an extra pack folder.

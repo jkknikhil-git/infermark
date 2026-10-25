@@ -1,0 +1,28 @@
+[package]
+name = "infermark-models"
+description = "InferMark model catalog, GGUF reader, hardware gate and verified downloader"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+infermark-sdk.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+toml.workspace = true
+sha2.workspace = true
+hex.workspace = true
+sysinfo.workspace = true
+ureq.workspace = true
+url.workspace = true
+zip.workspace = true
+flate2.workspace = true
+tar.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

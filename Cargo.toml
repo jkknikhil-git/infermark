@@ -4,6 +4,8 @@ members = [
     "crates/infermark-sdk",
     "crates/core",
     "crates/hwprobe",
+    "crates/models",
+    "crates/engine",
     "apps/cli",
     "apps/desktop/src-tauri",
 ]
@@ -11,6 +13,8 @@ default-members = [
     "crates/infermark-sdk",
     "crates/core",
     "crates/hwprobe",
+    "crates/models",
+    "crates/engine",
     "apps/cli",
 ]
 
@@ -26,6 +30,8 @@ rust-version = "1.80"
 infermark-sdk = { path = "crates/infermark-sdk" }
 infermark-core = { path = "crates/core" }
 infermark-hwprobe = { path = "crates/hwprobe" }
+infermark-models = { path = "crates/models" }
+infermark-engine = { path = "crates/engine" }
 
 anyhow = "1"
 thiserror = "2"
@@ -42,6 +48,12 @@ dirs = "6"
 clap = { version = "4", features = ["derive"] }
 sysinfo = "0.33"
 tempfile = "3"
+# HTTP: rustls only (no OpenSSL), no compression, no cookies.
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+url = "2"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+flate2 = "1"
+tar = "0.4"
 
 # Dependencies don't need debug info; this sharply cuts compile memory and target/ size
 # (Tauri pulls in very large crates such as `windows`).

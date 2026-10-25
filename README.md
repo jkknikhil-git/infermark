@@ -12,7 +12,7 @@
 
 ---
 
-> **Status:** early development (milestone M0). Expect breaking changes. Star/watch the repo to follow along.
+> **Status:** early development (milestone M1). Expect breaking changes. Star/watch the repo to follow along.
 
 ## Why InferMark?
 

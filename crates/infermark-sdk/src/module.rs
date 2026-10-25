@@ -141,8 +141,13 @@ pub struct RunContext<'a> {
     pub hardware: &'a HardwareInfo,
     /// Module-specific settings from the profile (`[modules.<id>]` table minus `enabled`).
     pub settings: &'a toml::Table,
-    /// Global run settings from the profile.
+    /// Global run settings from the profile (same as `profile.run`).
     pub run: &'a crate::profile::RunSettings,
+    /// The whole profile, for modules that need the model, gate or pack sections.
+    pub profile: &'a crate::profile::Profile,
+    /// Modules that already finished in this run, in order. Lets later modules reuse earlier
+    /// measurements (the hardware gate uses the measured memory bandwidth).
+    pub earlier: &'a [crate::result::ModuleRecord],
     pub progress: &'a (dyn Fn(Progress) + Send + Sync),
     pub cancel: &'a AtomicBool,
 }
@@ -172,6 +177,16 @@ impl RunContext<'_> {
             .get(key)
             .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
             .unwrap_or(default)
+    }
+
+    /// A metric reported by an earlier module in this run, if it completed.
+    pub fn earlier_metric(&self, module_id: &str, key: &str) -> Option<f64> {
+        self.earlier
+            .iter()
+            .filter(|r| r.module_id == module_id)
+            .flat_map(|r| &r.output.metrics)
+            .find(|m| m.key == key)
+            .map(|m| m.value)
     }
 
     pub fn setting_bool(&self, key: &str, default: bool) -> bool {
@@ -249,6 +264,9 @@ pub struct Series {
 pub enum ModuleError {
     #[error("cancelled")]
     Cancelled,
+    /// Nothing to do on this device or with this setup (recorded as skipped, not failed).
+    #[error("skipped: {0}")]
+    Skipped(String),
     #[error("invalid setting `{key}`: {message}")]
     InvalidSetting { key: String, message: String },
     #[error("{0}")]

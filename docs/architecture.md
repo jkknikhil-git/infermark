@@ -4,10 +4,14 @@
 crates/
   infermark-sdk/   Public traits and types. The only crate modules need to depend on.
   hwprobe/         Hardware detection (CPU, GPU via DXGI / sysfs / system_profiler, NVML, NPU, battery).
-  core/            Registry, planner, runner, profiles, packs, built-in modules and scorers, JSON Schemas.
+  models/          Model catalog, GGUF header reader, hardware gate, verified resumable downloader.
+  engine/          Inference backends: llama.cpp (`llama-server` child process) and Ollama (HTTP).
+  core/            Registry, planner, runner, profiles, packs, settings, built-in modules and scorers,
+                   JSON Schemas.
 apps/
   cli/             `infermark` command-line runner.
   desktop/         Tauri 2 app (Rust commands in src-tauri, React + Material 3 UI in src).
+catalog/           models.toml (GGUF models) and engines.toml (llama.cpp builds), pinned + hashed.
 profiles/          Built-in profiles (compiled into every build).
 packs/             Built-in test packs.
 schema/            Generated JSON Schemas for result, profile and pack files.
@@ -80,3 +84,22 @@ impl BenchModule for HelloModule {
 - Packs and profiles are data, never code.
 - The app and the CLI share the same core, so results are identical.
 - Nothing leaves the device unless the user explicitly asks (see [PRIVACY.md](../PRIVACY.md)).
+
+## Running models
+
+```text
+catalog/models.toml ──► hardware gate ──► download (HTTPS, allow-listed hosts, SHA-256) ──► models/
+                         │  memory = (weights + KV cache) × 1.15
+                         │  speed  ≈ measured bandwidth × 0.6 ÷ bytes per token
+                         ▼
+inference-perf ──► Backend ──► llama-server on 127.0.0.1 (random port + API key)   [llama-cpp]
+                           └─► local Ollama HTTP API                               [ollama]
+```
+
+llama.cpp runs as the official prebuilt `llama-server` rather than being compiled into InferMark.
+That gives every user the right GPU build (Vulkan, CUDA, Metal) without a C++ toolchain, and keeps
+the engine version visible in every result. Builds are pinned in `catalog/engines.toml` and
+installed into the storage folder; a custom `llama-server` can be set in settings.
+
+Every note and error a module produces is passed through `privacy::redact` before it is saved, so
+engine logs can't leak the account name through file paths.

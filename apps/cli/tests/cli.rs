@@ -98,7 +98,7 @@ fn plan_shows_skips_with_reasons() {
     let text = stdout(&out);
     assert!(text.contains("run   system-probe"), "{text}");
     assert!(
-        text.contains("skip  inference-perf (not available"),
+        text.contains("skip  quality-packs (not available"),
         "{text}"
     );
     let json = infermark(home.path(), &["plan", "-p", "quick", "--json"]);

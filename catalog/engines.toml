@@ -1,0 +1,113 @@
+# Inference engine builds InferMark can install (schema 1).
+#
+# Official llama.cpp release archives from github.com/ggml-org/llama.cpp, pinned to one build
+# with exact sizes and SHA-256 hashes (from the GitHub release asset digests). Archives that
+# don't match are deleted before anything is extracted or run.
+#
+# `accel` is what the build uses for speed: cpu, vulkan (most GPUs, including Intel and AMD
+# integrated graphics), cuda (NVIDIA) or metal (Apple silicon).
+
+schema = 1
+
+[[engine]]
+id = "llama-cpp-b11669-windows-x86_64-vulkan"
+build = "b11669"
+os = "windows"
+arch = "x86_64"
+accel = "vulkan"
+[[engine.archive]]
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-win-vulkan-x64.zip"
+size_bytes = 32182350
+sha256 = "2c07574e7bde71321cb785282b20cc821e951132149eeceeea32ddebdbf0598e"
+
+[[engine]]
+id = "llama-cpp-b11669-windows-x86_64-cpu"
+build = "b11669"
+os = "windows"
+arch = "x86_64"
+accel = "cpu"
+[[engine.archive]]
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-win-cpu-x64.zip"
+size_bytes = 19537886
+sha256 = "37b3efcf962847ca869745fd4ccf7f5e7e8dacfeff9fa3523b4ca8cdc66d632b"
+
+[[engine]]
+id = "llama-cpp-b11669-windows-x86_64-cuda"
+build = "b11669"
+os = "windows"
+arch = "x86_64"
+accel = "cuda"
+[[engine.archive]]
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-win-cuda-12.4-x64.zip"
+size_bytes = 266582698
+sha256 = "c2da1f73ed176ae093ac5aceb978a7b167a16113f6d74c6789eeaee2135cb8dc"
+[[engine.archive]]
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b11669/cudart-llama-bin-win-cuda-12.4-x64.zip"
+size_bytes = 391443627
+sha256 = "8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6"
+
+[[engine]]
+id = "llama-cpp-b11669-windows-aarch64-cpu"
+build = "b11669"
+os = "windows"
+arch = "aarch64"
+accel = "cpu"
+[[engine.archive]]
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-win-cpu-arm64.zip"
+size_bytes = 12442177
+sha256 = "9cff39ffed17edcd03a7d876073f74d7b48cd43a1e5eafdd59ee094185ad871b"
+
+[[engine]]
+id = "llama-cpp-b11669-macos-aarch64-metal"
+build = "b11669"
+os = "macos"
+arch = "aarch64"
+accel = "metal"
+[[engine.archive]]
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-macos-arm64.tar.gz"
+size_bytes = 12191582
+sha256 = "dbed55493d72bc1ba2babc8770d669c2289b5bc4ee9fb2a4dfc158d45b7d13fd"
+
+[[engine]]
+id = "llama-cpp-b11669-macos-x86_64-cpu"
+build = "b11669"
+os = "macos"
+arch = "x86_64"
+accel = "cpu"
+[[engine.archive]]
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-macos-x64.tar.gz"
+size_bytes = 11677404
+sha256 = "cab28238d78158109b48deb27b05d50e0dcef56275d2e76da9ca8281526c7532"
+
+[[engine]]
+id = "llama-cpp-b11669-linux-x86_64-vulkan"
+build = "b11669"
+os = "linux"
+arch = "x86_64"
+accel = "vulkan"
+[[engine.archive]]
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-ubuntu-vulkan-x64.tar.gz"
+size_bytes = 30497889
+sha256 = "e8709e5ba6c1b093dea7f3de57f4aba842f9a188fba6b465782d65d6fcfa4d9f"
+
+[[engine]]
+id = "llama-cpp-b11669-linux-x86_64-cpu"
+build = "b11669"
+os = "linux"
+arch = "x86_64"
+accel = "cpu"
+[[engine.archive]]
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-ubuntu-x64.tar.gz"
+size_bytes = 17851611
+sha256 = "cf07c1c112d709bd67e522017471de57ed0ec8bea031d732c5422351c07f65ac"
+
+[[engine]]
+id = "llama-cpp-b11669-linux-aarch64-cpu"
+build = "b11669"
+os = "linux"
+arch = "aarch64"
+accel = "cpu"
+[[engine.archive]]
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-ubuntu-arm64.tar.gz"
+size_bytes = 13900160
+sha256 = "9ac6fda2058d35677608a06f751a50122ddfa4ce0ddb7f084466b8e79b6d4a99"

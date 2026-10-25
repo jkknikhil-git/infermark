@@ -12,22 +12,33 @@ Everything lives in `~/.infermark/` (or `INFERMARK_HOME`):
 | `results/` | Benchmark results: hardware model names, scores, timings. |
 | `profiles/` | Profiles you created. |
 | `packs/` | Test packs you installed. |
+| `settings.toml` | Your settings (storage folder, Ollama address). |
 | `models/` | Model files you chose to download. |
+| `engines/` | The llama.cpp build InferMark installed for you. |
+
+`models/` and `engines/` can be moved to another drive with the **storage folder** setting.
 
 Results contain **no** usernames, hostnames, IP addresses, serial numbers or file paths. Devices are
 identified only by an anonymous hash of the hardware configuration (CPU model, GPU model, RAM size,
-OS family) that cannot be traced back to you.
+OS family) that cannot be traced back to you. Messages from inference engines are scrubbed of your
+home and storage folder paths before they are saved.
 
 ## Network access
 
 InferMark only connects to the internet when you:
 
-- **download a model** (from Hugging Face, or a source you add), or
+- **download a model** (from Hugging Face) or **install the llama.cpp engine** (from the official
+  GitHub releases). Downloads use HTTPS only, every redirect must stay on an allow-listed host,
+  and each file must match its published SHA-256 before it is used, or
 - **check for updates** (can be turned off), or
 - **share a result to the public leaderboard** (future feature, always opt-in; you'll see the exact
   data before anything is uploaded, and local file paths are removed).
 
 There is **no telemetry, analytics, crash reporting or advertising**, and no account is needed.
+
+While a benchmark runs, InferMark talks to inference engines **on your own computer**: the
+llama.cpp server it starts (listening on `127.0.0.1` only, protected by a random per-run key) and,
+if you use it, your local Ollama.
 
 ## LLM-as-judge
 

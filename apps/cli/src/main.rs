@@ -5,10 +5,15 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use infermark_core::{packs, paths, plan, profiles, run, schema, Registry, RunEvent};
-use infermark_sdk::{HardwareInfo, ModuleStatus, PlanStatus, PowerSource, RunResult};
+use infermark_core::engine::{self, EngineCatalog, EngineStore};
+use infermark_core::models::download::{DownloadPolicy, Progress};
+use infermark_core::models::{Catalog, ModelStore};
+use infermark_core::{
+    model_list, packs, paths, plan, profiles, run, schema, settings, Registry, RunEvent,
+};
+use infermark_sdk::{GateSettings, HardwareInfo, ModuleStatus, PlanStatus, PowerSource, RunResult};
 
 #[derive(Parser)]
 #[command(
@@ -82,6 +87,51 @@ enum Command {
         #[command(subcommand)]
         action: SchemaAction,
     },
+    /// List catalog models and whether each fits this device; download or delete them.
+    Models {
+        #[command(subcommand)]
+        action: Option<ModelsAction>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the inference engines (llama.cpp, Ollama); install llama.cpp.
+    Engine {
+        #[command(subcommand)]
+        action: Option<EngineAction>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show or change settings (where models are stored, Ollama address, ...).
+    Settings {
+        #[command(subcommand)]
+        action: Option<SettingsAction>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ModelsAction {
+    /// Download a catalog model (resumes if interrupted; verified with SHA-256).
+    Pull { id: String },
+    /// Delete a downloaded model.
+    Rm { id: String },
+}
+
+#[derive(Subcommand)]
+enum EngineAction {
+    /// Download and install the llama.cpp build recommended for this device.
+    Install {
+        /// Pick a specific build: cpu, vulkan, cuda or metal.
+        #[arg(long)]
+        accel: Option<String>,
+    },
+    /// Remove installed llama.cpp builds.
+    Rm,
+}
+
+#[derive(Subcommand)]
+enum SettingsAction {
+    /// Change a setting; an empty value resets it. Keys: storage_dir, llama_server, ollama_url.
+    Set { key: String, value: String },
 }
 
 #[derive(Subcommand)]
@@ -267,8 +317,179 @@ fn execute(cli: Cli) -> Result<ExitCode> {
                 println!("wrote {}", path.display());
             }
         }
+        Command::Models { action, json } => models_command(action, json)?,
+        Command::Engine { action, json } => engine_command(action, json)?,
+        Command::Settings { action } => {
+            let mut s = settings::load()?;
+            if let Some(SettingsAction::Set { key, value }) = action {
+                s.set(&key, &value)?;
+                settings::save(&s)?;
+                println!("Saved {}", settings::path().display());
+            }
+            println!("storage_dir   {}", s.storage_dir().display());
+            println!(
+                "llama_server  {}",
+                s.llama_server
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "(installed by InferMark)".into())
+            );
+            println!("ollama_url    {}", s.ollama_url);
+        }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+fn models_command(action: Option<ModelsAction>, json: bool) -> Result<()> {
+    let s = settings::load()?;
+    let store = ModelStore::new(s.models_dir());
+    let catalog = Catalog::builtin();
+    let find = |id: &str| {
+        catalog
+            .get(id)
+            .with_context(|| format!("no model `{id}` in the catalog (see `infermark models`)"))
+    };
+    match action {
+        None => {
+            let hw = infermark_hwprobe::probe();
+            let bandwidth = model_list::latest_bandwidth(&hw.fingerprint);
+            let entries = model_list::list(&hw, &GateSettings::default(), bandwidth, &store);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&entries)?);
+                return Ok(());
+            }
+            println!("Models folder: {}", store.root().display());
+            if bandwidth.is_none() {
+                println!("(Run a benchmark once so speed can be predicted.)");
+            }
+            for e in &entries {
+                let state = if e.installed { "installed" } else { "" };
+                let speed = e
+                    .verdict
+                    .predicted_tokens_per_sec
+                    .map(|t| format!("~{t:.0} tok/s"))
+                    .unwrap_or_default();
+                println!(
+                    "{:<26} {:>6.1} GB  {:<16} {:<10} {:>10}  {}",
+                    e.model.id,
+                    e.model.size_bytes as f64 / 1e9,
+                    e.verdict.tier.label(),
+                    state,
+                    speed,
+                    e.verdict.summary
+                );
+            }
+        }
+        Some(ModelsAction::Pull { id }) => {
+            let model = find(&id)?;
+            println!(
+                "{} ({}, {:.2} GB, license: {})",
+                model.name,
+                model.quant,
+                model.size_bytes as f64 / 1e9,
+                model.license
+            );
+            println!("Saving to {}", store.path(model).display());
+            let path = store.install(
+                model,
+                &DownloadPolicy::default(),
+                &mut print_progress,
+                &AtomicBool::new(false),
+            )?;
+            eprintln!();
+            println!("Verified and installed: {}", path.display());
+        }
+        Some(ModelsAction::Rm { id }) => {
+            store.remove(find(&id)?)?;
+            println!("Deleted {id}");
+        }
+    }
+    Ok(())
+}
+
+fn engine_command(action: Option<EngineAction>, json: bool) -> Result<()> {
+    let s = settings::load()?;
+    let catalog = EngineCatalog::builtin();
+    let store = EngineStore::new(s.engines_dir());
+    match action {
+        None => {
+            let status = engine::status(&s.engine_config());
+            if json {
+                println!("{}", serde_json::to_string_pretty(&status)?);
+                return Ok(());
+            }
+            match &status.llama_cpp {
+                Some(l) => println!(
+                    "llama.cpp  {} {} ({})",
+                    l.version,
+                    l.accel.map(|a| a.label()).unwrap_or("custom build"),
+                    l.path.display()
+                ),
+                None => println!("llama.cpp  not installed (run `infermark engine install`)"),
+            }
+            match &status.ollama {
+                Some(o) => println!(
+                    "Ollama     {} at {} ({} models)",
+                    o.version,
+                    o.url,
+                    o.models.len()
+                ),
+                None => println!("Ollama     not running at {}", s.ollama_url),
+            }
+        }
+        Some(EngineAction::Install { accel }) => {
+            let builds = catalog.for_this_platform();
+            let build = match accel {
+                Some(a) => builds
+                    .into_iter()
+                    .find(|b| b.accel.id() == a)
+                    .with_context(|| format!("no `{a}` build of llama.cpp for this platform"))?,
+                None => match catalog.recommended(&infermark_hwprobe::probe()) {
+                    Some(b) => b,
+                    None => bail!("no llama.cpp build for this platform"),
+                },
+            };
+            println!(
+                "llama.cpp {} for {} ({:.0} MB download)",
+                build.build,
+                build.accel.label(),
+                build.download_bytes() as f64 / 1e6
+            );
+            let path = store.install(
+                build,
+                &DownloadPolicy::default(),
+                &mut |i, n, p| {
+                    if n > 1 {
+                        eprint!("[{}/{}] ", i + 1, n);
+                    }
+                    print_progress(p)
+                },
+                &AtomicBool::new(false),
+            )?;
+            eprintln!();
+            println!("Installed {}", path.display());
+        }
+        Some(EngineAction::Rm) => {
+            for b in catalog.for_this_platform() {
+                store.remove(b)?;
+            }
+            println!("Removed installed llama.cpp builds");
+        }
+    }
+    Ok(())
+}
+
+fn print_progress(p: Progress) {
+    let (what, done, total) = match p {
+        Progress::Downloading { done, total } => ("Downloading", done, total),
+        Progress::Verifying { done, total } => ("Verifying  ", done, total),
+    };
+    eprint!(
+        "\r{what} {:>5.1}%  {:.2} / {:.2} GB",
+        done as f64 * 100.0 / total.max(1) as f64,
+        done as f64 / 1e9,
+        total as f64 / 1e9
+    );
 }
 
 fn save_result(result: &RunResult, dir: &Path) -> Result<PathBuf> {
