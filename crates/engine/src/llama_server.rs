@@ -41,7 +41,12 @@ struct Running {
 impl LlamaServer {
     pub fn new(exe: impl Into<PathBuf>) -> Self {
         let exe = exe.into();
-        let version = server_version(&exe).unwrap_or_else(|| "unknown".into());
+        let mut version = server_version(&exe).unwrap_or_else(|| "unknown".into());
+        // Record which GPU the engine can use (llama.cpp offloads automatically).
+        let devices = server_devices(&exe);
+        if !devices.is_empty() {
+            version = format!("{version} on {}", devices.join(", "));
+        }
         Self {
             exe,
             version,
@@ -69,23 +74,73 @@ impl LlamaServer {
     }
 }
 
-/// `llama-server --version` prints e.g. `version: 11669 (1a2b3c4)`.
+/// The engine build, e.g. `b11669`, from `llama-server --version`.
 pub fn server_version(exe: &Path) -> Option<String> {
-    let out = hidden(Command::new(exe))
-        .arg("--version")
-        .stdin(Stdio::null())
-        .output()
-        .ok()?;
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
+    let text = run_for_output(exe, "--version")?;
     let line = text
         .lines()
         .find(|l| l.trim_start().starts_with("version:"))?;
-    let v = line.trim_start().trim_start_matches("version:").trim();
-    Some(format!("b{v}"))
+    parse_version(line.trim_start().trim_start_matches("version:").trim())
+}
+
+/// Older builds print `11669 (1a2b3c4)`, newer ones `0.7.0-dev (build 11669, commit 620d2225c)`.
+fn parse_version(v: &str) -> Option<String> {
+    if v.is_empty() {
+        return None;
+    }
+    if let Some(rest) = v.split("build ").nth(1) {
+        let n: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        if !n.is_empty() {
+            return Some(format!("b{n}"));
+        }
+    }
+    let first = v.split_whitespace().next().unwrap_or(v);
+    if first.chars().all(|c| c.is_ascii_digit()) {
+        Some(format!("b{first}"))
+    } else {
+        Some(first.to_string())
+    }
+}
+
+/// GPUs llama.cpp can use, e.g. `Intel Iris Xe Graphics (Vulkan)`; empty for CPU builds.
+pub fn server_devices(exe: &Path) -> Vec<String> {
+    let Some(text) = run_for_output(exe, "--list-devices") else {
+        return Vec::new();
+    };
+    parse_devices(&text)
+}
+
+/// Lines like `  Vulkan0: Intel(R) Iris(R) Xe Graphics (8083 MiB, 7423 MiB free)`.
+fn parse_devices(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|l| {
+            let (api, rest) = l.trim().split_once(": ")?;
+            // Device ids are an API name plus an index: `Vulkan0`, `CUDA1`, `Metal0`.
+            let base = api.trim_end_matches(|c: char| c.is_ascii_digit());
+            if base.is_empty() || base.len() == api.len() || api.contains(' ') {
+                return None;
+            }
+            let name = rest.split(" (").next().unwrap_or(rest);
+            let name = name.replace("(R)", "").replace("(TM)", "");
+            Some(format!(
+                "{} ({base})",
+                name.split_whitespace().collect::<Vec<_>>().join(" ")
+            ))
+        })
+        .collect()
+}
+
+fn run_for_output(exe: &Path, arg: &str) -> Option<String> {
+    let out = hidden(Command::new(exe))
+        .arg(arg)
+        .stdin(Stdio::null())
+        .output()
+        .ok()?;
+    Some(format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    ))
 }
 
 /// Don't flash a console window when the desktop app starts the server on Windows.
@@ -290,6 +345,29 @@ impl Drop for LlamaServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn versions_in_both_formats() {
+        assert_eq!(parse_version("11669 (1a2b3c4)").as_deref(), Some("b11669"));
+        assert_eq!(
+            parse_version("0.7.0-dev (build 11669, commit 620d2225c)").as_deref(),
+            Some("b11669")
+        );
+        assert_eq!(parse_version("").as_deref(), None);
+    }
+
+    #[test]
+    fn device_list() {
+        let text = "load_backend: loaded Vulkan backend\nAvailable devices:\n  Vulkan0: Intel(R) Iris(R) Xe Graphics (8083 MiB, 7423 MiB free)\n  CUDA0: NVIDIA GeForce RTX 4060 (8188 MiB, 7000 MiB free)\n";
+        assert_eq!(
+            parse_devices(text),
+            [
+                "Intel Iris Xe Graphics (Vulkan)",
+                "NVIDIA GeForce RTX 4060 (CUDA)"
+            ]
+        );
+        assert!(parse_devices("Available devices:\n").is_empty());
+    }
 
     #[test]
     fn keys_are_random_and_long() {

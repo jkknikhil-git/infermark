@@ -83,7 +83,11 @@ impl BenchModule for InferencePerf {
         };
 
         // Hardware gate.
-        let bandwidth = ctx.earlier_metric("memory-bandwidth", "triad_gbps");
+        // The better of copy and triad: a single noisy pass shouldn't make the gate pessimistic.
+        let bandwidth = ["copy_gbps", "triad_gbps"]
+            .iter()
+            .filter_map(|k| ctx.earlier_metric("memory-bandwidth", k))
+            .reduce(f64::max);
         candidates.retain(|c| {
             let Some((bytes, shape)) = &c.gate_input else {
                 return true;

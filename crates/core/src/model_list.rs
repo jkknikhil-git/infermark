@@ -45,7 +45,7 @@ pub fn list(
         .collect()
 }
 
-/// Memory bandwidth (triad, GB/s) from the newest saved result for this hardware, so the gate
+/// Memory bandwidth (best of copy and triad, GB/s) from the newest saved result for this hardware, so the gate
 /// can predict speed without re-measuring.
 pub fn latest_bandwidth(fingerprint: &str) -> Option<f64> {
     let mut files: Vec<_> = std::fs::read_dir(paths::results_dir())
@@ -66,7 +66,8 @@ pub fn latest_bandwidth(fingerprint: &str) -> Option<f64> {
             .iter()
             .filter(|m| m.module_id == "memory-bandwidth" && m.status == ModuleStatus::Completed)
             .flat_map(|m| &m.output.metrics)
-            .find(|m| m.key == "triad_gbps")
+            .filter(|m| m.key == "copy_gbps" || m.key == "triad_gbps")
             .map(|m| m.value)
+            .reduce(f64::max)
     })
 }

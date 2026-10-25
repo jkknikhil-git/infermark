@@ -60,6 +60,11 @@ tar = "0.4"
 [profile.dev.package."*"]
 debug = false
 
+# Benchmarks must measure the hardware, not the compiler: optimize the measuring code even in
+# development builds (otherwise e.g. the memory triad loop is CPU-bound and reads ~3x too low).
+[profile.dev.package.infermark-core]
+opt-level = 3
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
