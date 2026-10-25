@@ -39,6 +39,8 @@ export interface HardwareInfo {
   power_source: "ac" | "battery" | "unknown";
 }
 
+export type LiveStatus = Pick<HardwareInfo, "memory" | "battery" | "power_source">;
+
 export interface ModuleDescriptor {
   id: string;
   name: string;
@@ -146,6 +148,7 @@ function call<T>(cmd: string, args: Record<string, unknown> | undefined, fallbac
 
 export const api = {
   probe: () => call<HardwareInfo>("probe", undefined, () => sample.hardware),
+  liveStatus: () => call<LiveStatus>("live_status", undefined, () => sample.liveStatus()),
   listProfiles: () =>
     call<{ profiles: ProfileEntry[]; errors: [string, string][] }>("list_profiles", undefined, () => ({
       profiles: sample.profiles,

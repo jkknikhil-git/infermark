@@ -38,6 +38,16 @@ export const hardware: HardwareInfo = {
   power_source: "ac",
 };
 
+// Free memory drifts a little so the live view can be previewed.
+export function liveStatus() {
+  const jitter = (Math.random() - 0.5) * 0.4 * GIB;
+  return {
+    memory: { ...hardware.memory, available_bytes: hardware.memory.available_bytes + jitter },
+    battery: hardware.battery,
+    power_source: hardware.power_source,
+  };
+}
+
 const descriptor = (id: string, name: string, description: string, estimated_seconds: number) => ({
   id,
   name,

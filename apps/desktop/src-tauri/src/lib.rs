@@ -29,6 +29,14 @@ async fn probe() -> HardwareInfo {
         .expect("probe never panics")
 }
 
+/// Memory and power right now; the Device page polls this every couple of seconds.
+#[tauri::command]
+async fn live_status() -> infermark_hwprobe::LiveStatus {
+    tauri::async_runtime::spawn_blocking(infermark_hwprobe::live_status)
+        .await
+        .expect("live status never panics")
+}
+
 #[derive(Serialize)]
 struct ProfileList {
     profiles: Vec<profiles::ProfileEntry>,
@@ -233,6 +241,7 @@ pub fn run() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             probe,
+            live_status,
             list_profiles,
             plan_profile,
             start_run,

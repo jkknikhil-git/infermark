@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, gb, type HardwareInfo } from "../api";
 import { Banner, Icon, PageHeader } from "../components/ui";
 
+const LIVE_INTERVAL_MS = 2000;
+
 const OS_LABEL: Record<string, string> = {
   windows: "Windows",
   macos: "macOS",
@@ -28,6 +30,29 @@ export default function DevicePage({ onRun }: { onRun: () => void }) {
   }, []);
 
   useEffect(refresh, [refresh]);
+
+  // Memory and power change all the time (apps opening, charger unplugged), so keep them live.
+  // Paused while the window is hidden to avoid wasting battery.
+  useEffect(() => {
+    let busy = false;
+    const tick = () => {
+      if (busy || document.hidden) return;
+      busy = true;
+      api
+        .liveStatus()
+        .then((live) => setHw((h) => (h ? { ...h, ...live } : h)))
+        .catch(() => {
+          /* keep the last known values */
+        })
+        .finally(() => (busy = false));
+    };
+    const id = window.setInterval(tick, LIVE_INTERVAL_MS);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, []);
 
   return (
     <div className="page">
@@ -86,14 +111,14 @@ export default function DevicePage({ onRun }: { onRun: () => void }) {
 
           <div className="grid">
             <InfoCard icon="memory" title="Processor">
-              <Kv k="Model" v={hw.cpu.brand} />
+              <Kv k="Model" v={cleanName(hw.cpu.brand)} />
               <Kv k="Cores" v={hw.cpu.physical_cores != null ? `${hw.cpu.physical_cores}` : "Unknown"} />
               <Kv k="Threads" v={`${hw.cpu.logical_cores}`} />
               {hw.cpu.frequency_mhz && <Kv k="Clock" v={`${(hw.cpu.frequency_mhz / 1000).toFixed(2)} GHz`} />}
               <Kv k="Architecture" v={hw.os.arch} />
             </InfoCard>
 
-            <InfoCard icon="storage" title="Memory">
+            <InfoCard icon="storage" title="Memory" live>
               <Kv k="Installed" v={gb(hw.memory.total_bytes)} />
               <Kv k="Free now" v={gb(hw.memory.available_bytes)} />
               <MemoryBar total={hw.memory.total_bytes} free={hw.memory.available_bytes} />
@@ -106,7 +131,7 @@ export default function DevicePage({ onRun }: { onRun: () => void }) {
             )}
             {hw.gpus.map((g, i) => (
               <InfoCard key={i} icon="developer_board" title={hw.gpus.length > 1 ? `Graphics ${i + 1}` : "Graphics"}>
-                <Kv k="Model" v={g.name} />
+                <Kv k="Model" v={cleanName(g.name)} />
                 <Kv k="Type" v={g.integrated ? "Integrated (shares RAM)" : "Dedicated"} />
                 {!g.integrated && <Kv k="Video memory" v={gb(g.dedicated_vram_bytes)} />}
                 {g.integrated && g.shared_memory_bytes != null && <Kv k="Can borrow" v={gb(g.shared_memory_bytes)} />}
@@ -122,11 +147,16 @@ export default function DevicePage({ onRun }: { onRun: () => void }) {
               )}
             </InfoCard>
 
-            <InfoCard icon={hw.battery ? "battery_full" : "power"} title="Power">
+            <InfoCard icon={batteryIcon(hw)} title="Power" live>
               <Kv k="Source" v={hw.power_source === "battery" ? "Battery" : hw.power_source === "ac" ? "Plugged in" : "Unknown"} />
               {hw.battery ? (
                 <>
-                  <Kv k="Charge" v={`${hw.battery.charge_percent.toFixed(0)}%${hw.battery.charging ? " (charging)" : ""}`} />
+                  <Kv
+                    k="Charge"
+                    v={`${hw.battery.charge_percent.toFixed(0)}%${
+                      hw.power_source === "battery" ? " (discharging)" : hw.battery.charging ? " (charging)" : ""
+                    }`}
+                  />
                   {hw.battery.full_capacity_wh && <Kv k="Capacity" v={`${hw.battery.full_capacity_wh} Wh`} />}
                   {hw.battery.design_capacity_wh && hw.battery.full_capacity_wh && (
                     <Kv k="Health" v={`${Math.round((hw.battery.full_capacity_wh / hw.battery.design_capacity_wh) * 100)}%`} />
@@ -148,19 +178,36 @@ export default function DevicePage({ onRun }: { onRun: () => void }) {
   );
 }
 
+/** Battery icon that reflects charge level and charging state. */
+function batteryIcon(hw: HardwareInfo) {
+  const b = hw.battery;
+  if (!b) return "power";
+  if (b.charging || hw.power_source === "ac") return "battery_charging_full";
+  const bars = Math.min(6, Math.max(0, Math.round((b.charge_percent / 100) * 6)));
+  return bars === 6 ? "battery_full" : `battery_${bars}_bar`;
+}
+
 /** "11th Gen Intel(R) Core(TM) i5-11320H" -> "11th Gen Intel Core i5-11320H" */
 function cleanName(name: string) {
   return name.replace(/\((R|TM)\)/gi, "").replace(/\s+/g, " ").trim();
 }
 
-function InfoCard({ icon, title, children }: { icon: string; title: string; children: ReactNode }) {
+function InfoCard({ icon, title, live, children }: { icon: string; title: string; live?: boolean; children: ReactNode }) {
   return (
     <section className="card">
       <div className="card-head">
         <span className="avatar">
           <Icon name={icon} />
         </span>
-        <h3 className="title-medium">{title}</h3>
+        <h3 className="title-medium" style={{ flex: 1 }}>
+          {title}
+        </h3>
+        {live && (
+          <span className="live-badge label-medium" title="Updates every 2 seconds">
+            <span className="live-dot" aria-hidden="true" />
+            Live
+          </span>
+        )}
       </div>
       <dl className="kv body-medium">{children}</dl>
     </section>

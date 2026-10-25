@@ -5,9 +5,37 @@ mod battery;
 mod gpu;
 mod nvidia;
 
-use infermark_sdk::{CpuInfo, HardwareInfo, MemoryInfo, OsFamily, OsInfo};
+use infermark_sdk::{
+    BatteryInfo, CpuInfo, HardwareInfo, MemoryInfo, OsFamily, OsInfo, PowerSource,
+};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
-use sysinfo::System;
+use sysinfo::{MemoryRefreshKind, RefreshKind, System};
+
+/// The parts of [`HardwareInfo`] that change from second to second.
+#[derive(Debug, Clone, Serialize)]
+pub struct LiveStatus {
+    pub memory: MemoryInfo,
+    pub battery: Option<BatteryInfo>,
+    pub power_source: PowerSource,
+}
+
+/// Cheap enough to call every second or two: reads memory and power only, skipping the
+/// GPU, driver and NPU queries that [`probe`] makes.
+pub fn live_status() -> LiveStatus {
+    let sys = System::new_with_specifics(
+        RefreshKind::nothing().with_memory(MemoryRefreshKind::nothing().with_ram()),
+    );
+    let (battery, power_source) = battery::detect();
+    LiveStatus {
+        memory: MemoryInfo {
+            total_bytes: sys.total_memory(),
+            available_bytes: sys.available_memory(),
+        },
+        battery,
+        power_source,
+    }
+}
 
 /// Detect the current machine.
 pub fn probe() -> HardwareInfo {
@@ -90,6 +118,15 @@ mod tests {
         assert!(hw.memory.total_bytes > 0);
         assert_eq!(hw.fingerprint.len(), 16);
         assert_eq!(hw.os.family, OsFamily::current());
+    }
+
+    #[test]
+    fn live_status_matches_probe() {
+        let hw = probe();
+        let live = live_status();
+        assert_eq!(live.memory.total_bytes, hw.memory.total_bytes);
+        assert!(live.memory.available_bytes <= live.memory.total_bytes);
+        assert_eq!(live.battery.is_some(), hw.battery.is_some());
     }
 
     #[test]
