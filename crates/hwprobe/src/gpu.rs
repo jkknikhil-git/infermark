@@ -3,6 +3,7 @@
 use infermark_sdk::{GpuInfo, NpuInfo};
 
 /// Below this much dedicated memory a GPU is treated as integrated (it borrows system RAM).
+#[cfg(any(windows, target_os = "linux"))]
 const INTEGRATED_VRAM_LIMIT: u64 = 1024 * 1024 * 1024;
 
 pub fn detect(total_ram: u64) -> (Vec<GpuInfo>, Vec<NpuInfo>) {
