@@ -515,3 +515,33 @@ code, .mono { font-family: "Roboto Mono", ui-monospace, Consolas, monospace; fon
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* ---------- Models ---------- */
+.model-item { align-items: flex-start; }
+.model-item .lead { padding-top: 2px; }
+.model-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .model-item { flex-wrap: wrap; }
+  .model-actions { flex-direction: row; align-items: center; width: 100%; justify-content: flex-end; }
+}
+
+/* ---------- Text fields ---------- */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.text-input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--md-sys-color-outline);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  font-size: 14px;
+}
+.text-input:focus { outline: 2px solid var(--md-sys-color-primary); outline-offset: -1px; border-color: transparent; }

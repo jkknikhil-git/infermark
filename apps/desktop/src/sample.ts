@@ -1,7 +1,14 @@
 // Sample data for previewing the UI in a plain browser (no Tauri backend). Never used in the app.
 import type {
   AppInfo,
+  DownloadListeners,
+  EngineView,
   HardwareInfo,
+  ModelEntry,
+  ModelsView,
+  SettingKey,
+  SettingsView,
+  Tier,
   PackSummary,
   PlanEntry,
   ProfileEntry,
@@ -204,4 +211,130 @@ export function startRun(_key: string) {
 export function cancelRun() {
   window.clearInterval(timer);
   listeners?.onError("Benchmark stopped.");
+}
+
+// ---------- Models (preview only) ----------
+
+const model = (
+  id: string,
+  name: string,
+  family: string,
+  params_b: number,
+  size_bytes: number,
+  license: string,
+  tier: Tier,
+  tps: number | null,
+  summary: string,
+  installed = false,
+): ModelEntry => ({
+  id,
+  name,
+  family,
+  params_b,
+  quant: "Q4_K_M",
+  license,
+  tags: ["chat"],
+  url: "",
+  size_bytes,
+  sha256: "",
+  installed,
+  partial_bytes: 0,
+  verdict: { tier, needed_bytes: size_bytes * 1.3, budget_bytes: 13.4 * GIB, predicted_tokens_per_sec: tps, summary },
+});
+
+let models: ModelEntry[] = [
+  model("qwen3-0.6b-q4", "Qwen3 0.6B", "Qwen3", 0.6, 396705472, "Apache-2.0", "system-memory", 26, "Runs in system memory, shared with the integrated GPU (0.9 GB of 13.4 GB)", true),
+  model("llama-3.2-1b-q4", "Llama 3.2 1B Instruct", "Llama 3", 1.2, 807694464, "Llama 3.2 Community", "system-memory", 13, "Runs in system memory, shared with the integrated GPU (1.0 GB of 13.4 GB)"),
+  model("llama-3.2-3b-q4", "Llama 3.2 3B Instruct", "Llama 3", 3.2, 2019377696, "Llama 3.2 Community", "system-memory", 5, "Runs in system memory, shared with the integrated GPU (2.7 GB of 13.4 GB)"),
+  model("qwen3-8b-q4", "Qwen3 8B", "Qwen3", 8.2, 5027784512, "Apache-2.0", "system-memory", 2, "Runs in system memory, shared with the integrated GPU (6.0 GB of 13.4 GB)"),
+  model("qwen3-14b-q4", "Qwen3 14B", "Qwen3", 14.8, 9001753984, "Apache-2.0", "too-slow", 1.1, "Predicted about 1.1 tokens/s, below the 2 tokens/s minimum"),
+  model("llama-3.3-70b-q4", "Llama 3.3 70B Instruct", "Llama 3", 70.6, 42520398816, "Llama 3.3 Community", "too-big", null, "Needs 47.0 GB, this device can use 13.4 GB"),
+];
+
+export const modelsView = (): ModelsView => ({
+  models,
+  models_dir: "~/.infermark/models",
+  free_bytes: 154 * 1e9,
+  speed_known: true,
+});
+
+let dlListeners: DownloadListeners | null = null;
+const dlTimers = new Map<string, number>();
+
+export function listenDownloads(l: DownloadListeners) {
+  dlListeners = l;
+  return () => {
+    if (dlListeners === l) dlListeners = null;
+  };
+}
+
+function simulate(id: string, total: number, onDone: () => void) {
+  let done = 0;
+  const timer = window.setInterval(() => {
+    done = Math.min(total, done + total / 12);
+    dlListeners?.onProgress({ id, phase: done < total ? "downloading" : "verifying", done, total });
+    if (done >= total) {
+      window.clearInterval(timer);
+      dlTimers.delete(id);
+      onDone();
+      dlListeners?.onDone({ id, error: null });
+    }
+  }, 300);
+  dlTimers.set(id, timer);
+}
+
+export function startDownload(id: string) {
+  const m = models.find((x) => x.id === id);
+  if (!m) return;
+  simulate(id, m.size_bytes, () => {
+    models = models.map((x) => (x.id === id ? { ...x, installed: true } : x));
+  });
+}
+
+export function cancelDownload(id: string) {
+  window.clearInterval(dlTimers.get(id));
+  dlTimers.delete(id);
+  dlListeners?.onDone({ id, error: "cancelled" });
+}
+
+export function deleteModel(id: string) {
+  models = models.map((x) => (x.id === id ? { ...x, installed: false } : x));
+}
+
+let engineInstalled = false;
+
+export const engineView = (): EngineView => ({
+  status: {
+    llama_cpp: engineInstalled ? { path: "~/.infermark/engines/llama-server", version: "b11669", accel: "vulkan" } : null,
+    ollama: null,
+  },
+  builds: [
+    { id: "vulkan", build: "b11669", accel: "vulkan", accel_label: "Vulkan (GPU)", download_bytes: 32182350, installed: engineInstalled, recommended: true },
+    { id: "cpu", build: "b11669", accel: "cpu", accel_label: "CPU", download_bytes: 19537886, installed: false, recommended: false },
+  ],
+});
+
+export function installEngine(_id: string) {
+  simulate("engine", 32182350, () => {
+    engineInstalled = true;
+  });
+}
+
+let settings: SettingsView = {
+  settings: { ollama_url: "http://127.0.0.1:11434" },
+  storage_dir: "~/.infermark",
+  default_storage_dir: "~/.infermark",
+};
+
+export const settingsView = () => settings;
+
+export function setSetting(key: SettingKey, value: string): SettingsView {
+  const s = { ...settings.settings, [key]: value || undefined };
+  if (key === "ollama_url" && !value) s.ollama_url = "http://127.0.0.1:11434";
+  settings = {
+    ...settings,
+    settings: s as SettingsView["settings"],
+    storage_dir: key === "storage_dir" ? value || settings.default_storage_dir : settings.storage_dir,
+  };
+  return settings;
 }

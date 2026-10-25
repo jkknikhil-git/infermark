@@ -1,12 +1,18 @@
 //! Tauri commands: a thin layer over `infermark-core`, so the app and the CLI behave the same.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
-use infermark_core::{packs, paths, plan, profiles, run as run_benchmark, Registry, RunEvent};
-use infermark_sdk::{HardwareInfo, ModuleStatus, PlanEntry, RunResult};
+use infermark_core::engine::{self, Accel, EngineCatalog, EngineStatus, EngineStore};
+use infermark_core::models::download::{self, DownloadPolicy, Progress};
+use infermark_core::models::{Catalog, ModelStore};
+use infermark_core::{
+    model_list, packs, paths, plan, profiles, run as run_benchmark, settings, Registry, RunEvent,
+};
+use infermark_sdk::{GateSettings, HardwareInfo, ModuleStatus, PlanEntry, RunResult};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -14,6 +20,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 struct AppState {
     /// Cancel flag of the run in progress, if any.
     running: Mutex<Option<Arc<AtomicBool>>>,
+    /// Cancel flags of downloads in progress, by model id (or `engine`).
+    downloads: Mutex<HashMap<String, Arc<AtomicBool>>>,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -235,6 +243,250 @@ fn app_info() -> AppInfo {
     }
 }
 
+// ---------- Models and engines ----------
+
+#[derive(Serialize)]
+struct ModelsView {
+    models: Vec<model_list::ModelEntry>,
+    models_dir: PathBuf,
+    /// Free space on the drive that holds the models folder.
+    free_bytes: Option<u64>,
+    /// Whether speed predictions are available (needs one memory-speed result).
+    speed_known: bool,
+}
+
+#[tauri::command]
+async fn list_models() -> CmdResult<ModelsView> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let s = settings::load().map_err(err)?;
+        let hw = infermark_hwprobe::probe();
+        let bandwidth = model_list::latest_bandwidth(&hw.fingerprint);
+        let store = ModelStore::new(s.models_dir());
+        let models = model_list::list(&hw, &GateSettings::default(), bandwidth, &store);
+        let free_bytes = existing_ancestor(store.root()).and_then(|p| download::free_space(&p));
+        Ok(ModelsView {
+            models,
+            models_dir: store.root().to_path_buf(),
+            free_bytes,
+            speed_known: bandwidth.is_some(),
+        })
+    })
+    .await
+    .map_err(err)?
+}
+
+/// The folder itself, or its closest parent that exists (for free-space checks).
+fn existing_ancestor(path: &Path) -> Option<PathBuf> {
+    path.ancestors().find(|p| p.exists()).map(Path::to_path_buf)
+}
+
+#[derive(Serialize, Clone)]
+struct DownloadEvent {
+    /// Catalog model id, or `engine`.
+    id: String,
+    #[serde(flatten)]
+    progress: Progress,
+}
+
+#[derive(Serialize, Clone)]
+struct DownloadDone {
+    id: String,
+    /// `None` on success.
+    error: Option<String>,
+}
+
+type DownloadWork =
+    Box<dyn FnOnce(&mut dyn FnMut(Progress), &AtomicBool) -> Result<(), String> + Send>;
+
+/// Run a download on a background thread. Progress arrives as `download-progress` events and
+/// the outcome as `download-done`.
+fn spawn_download(
+    id: String,
+    app: AppHandle,
+    state: &AppState,
+    work: DownloadWork,
+) -> CmdResult<()> {
+    let cancel = Arc::new(AtomicBool::new(false));
+    {
+        let mut downloads = state.downloads.lock().unwrap();
+        if downloads.contains_key(&id) {
+            return Err("Already downloading.".into());
+        }
+        downloads.insert(id.clone(), cancel.clone());
+    }
+    std::thread::spawn(move || {
+        let emitter = app.clone();
+        let event_id = id.clone();
+        let mut on_progress = move |progress: Progress| {
+            let _ = emitter.emit(
+                "download-progress",
+                DownloadEvent {
+                    id: event_id.clone(),
+                    progress,
+                },
+            );
+        };
+        let result = work(&mut on_progress, &cancel);
+        if let Some(state) = app.try_state::<AppState>() {
+            state.downloads.lock().unwrap().remove(&id);
+        }
+        let _ = app.emit(
+            "download-done",
+            DownloadDone {
+                id,
+                error: result.err(),
+            },
+        );
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn download_model(id: String, app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
+    let model = Catalog::builtin()
+        .get(&id)
+        .cloned()
+        .ok_or("Unknown model.")?;
+    let store = ModelStore::new(settings::load().map_err(err)?.models_dir());
+    spawn_download(
+        id,
+        app,
+        &state,
+        Box::new(move |on_progress, cancel| {
+            store
+                .install(&model, &DownloadPolicy::default(), on_progress, cancel)
+                .map(|_| ())
+                .map_err(err)
+        }),
+    )
+}
+
+#[tauri::command]
+fn cancel_download(id: String, state: State<'_, AppState>) {
+    if let Some(flag) = state.downloads.lock().unwrap().get(&id) {
+        flag.store(true, Ordering::Relaxed);
+    }
+}
+
+#[tauri::command]
+fn delete_model(id: String, state: State<'_, AppState>) -> CmdResult<()> {
+    if state.downloads.lock().unwrap().contains_key(&id) {
+        return Err("Stop the download first.".into());
+    }
+    let model = Catalog::builtin()
+        .get(&id)
+        .cloned()
+        .ok_or("Unknown model.")?;
+    ModelStore::new(settings::load().map_err(err)?.models_dir())
+        .remove(&model)
+        .map_err(err)
+}
+
+#[derive(Serialize)]
+struct EngineBuildInfo {
+    id: String,
+    build: String,
+    accel: Accel,
+    accel_label: &'static str,
+    download_bytes: u64,
+    installed: bool,
+    recommended: bool,
+}
+
+#[derive(Serialize)]
+struct EngineView {
+    status: EngineStatus,
+    builds: Vec<EngineBuildInfo>,
+}
+
+#[tauri::command]
+async fn engine_status() -> CmdResult<EngineView> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let s = settings::load().map_err(err)?;
+        let catalog = EngineCatalog::builtin();
+        let store = EngineStore::new(s.engines_dir());
+        let recommended = catalog
+            .recommended(&infermark_hwprobe::probe())
+            .map(|b| b.id.clone());
+        let builds = catalog
+            .for_this_platform()
+            .into_iter()
+            .map(|b| EngineBuildInfo {
+                id: b.id.clone(),
+                build: b.build.clone(),
+                accel: b.accel,
+                accel_label: b.accel.label(),
+                download_bytes: b.download_bytes(),
+                installed: store.server_path(b).is_some(),
+                recommended: recommended.as_deref() == Some(b.id.as_str()),
+            })
+            .collect();
+        Ok(EngineView {
+            status: engine::status(&s.engine_config()),
+            builds,
+        })
+    })
+    .await
+    .map_err(err)?
+}
+
+#[tauri::command]
+fn install_engine(id: String, app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
+    let build = EngineCatalog::builtin()
+        .get(&id)
+        .cloned()
+        .ok_or("Unknown engine build.")?;
+    let store = EngineStore::new(settings::load().map_err(err)?.engines_dir());
+    spawn_download(
+        "engine".into(),
+        app,
+        &state,
+        Box::new(move |on_progress, cancel| {
+            store
+                .install(
+                    &build,
+                    &DownloadPolicy::default(),
+                    &mut |_, _, p| on_progress(p),
+                    cancel,
+                )
+                .map(|_| ())
+                .map_err(err)
+        }),
+    )
+}
+
+// ---------- Settings ----------
+
+#[derive(Serialize)]
+struct SettingsView {
+    settings: settings::Settings,
+    /// The folder actually used (setting, environment override or default).
+    storage_dir: PathBuf,
+    default_storage_dir: PathBuf,
+}
+
+fn settings_view(s: settings::Settings) -> SettingsView {
+    SettingsView {
+        storage_dir: s.storage_dir(),
+        default_storage_dir: paths::home(),
+        settings: s,
+    }
+}
+
+#[tauri::command]
+fn get_settings() -> CmdResult<SettingsView> {
+    settings::load().map(settings_view).map_err(err)
+}
+
+/// Save one setting (`storage_dir`, `llama_server` or `ollama_url`); an empty value resets it.
+#[tauri::command]
+fn set_setting(key: String, value: String) -> CmdResult<SettingsView> {
+    let mut s = settings::load().map_err(err)?;
+    s.set(&key, &value).map_err(err)?;
+    settings::save(&s).map_err(err)?;
+    Ok(settings_view(s))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -249,7 +501,15 @@ pub fn run() {
             list_results,
             load_result,
             list_packs,
-            app_info
+            app_info,
+            list_models,
+            download_model,
+            cancel_download,
+            delete_model,
+            engine_status,
+            install_engine,
+            get_settings,
+            set_setting
         ])
         .run(tauri::generate_context!())
         .expect("error while running InferMark");

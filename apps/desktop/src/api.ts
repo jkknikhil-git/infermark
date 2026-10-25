@@ -140,6 +140,73 @@ export interface AppInfo {
   results_dir: string;
 }
 
+export type Tier = "full-gpu" | "partial-offload" | "system-memory" | "too-big" | "too-slow";
+
+export interface ModelEntry {
+  id: string;
+  name: string;
+  family: string;
+  params_b: number;
+  quant: string;
+  license: string;
+  tags: string[];
+  url: string;
+  size_bytes: number;
+  sha256: string;
+  ollama?: string;
+  installed: boolean;
+  partial_bytes: number;
+  verdict: {
+    tier: Tier;
+    needed_bytes: number;
+    budget_bytes: number;
+    predicted_tokens_per_sec: number | null;
+    summary: string;
+  };
+}
+
+export interface ModelsView {
+  models: ModelEntry[];
+  models_dir: string;
+  free_bytes: number | null;
+  speed_known: boolean;
+}
+
+export type Accel = "cpu" | "vulkan" | "cuda" | "metal";
+
+export interface EngineView {
+  status: {
+    llama_cpp: { path: string; version: string; accel: Accel | null } | null;
+    ollama: { url: string; version: string; models: { name: string; size_bytes: number }[] } | null;
+  };
+  builds: {
+    id: string;
+    build: string;
+    accel: Accel;
+    accel_label: string;
+    download_bytes: number;
+    installed: boolean;
+    recommended: boolean;
+  }[];
+}
+
+export type DownloadProgress =
+  | { id: string; phase: "downloading"; done: number; total: number }
+  | { id: string; phase: "verifying"; done: number; total: number };
+
+export interface DownloadDone {
+  id: string;
+  error: string | null;
+}
+
+export interface SettingsView {
+  settings: { storage_dir?: string; llama_server?: string; ollama_url: string };
+  storage_dir: string;
+  default_storage_dir: string;
+}
+
+export type SettingKey = "storage_dir" | "llama_server" | "ollama_url";
+
 export const isPreview = !("__TAURI_INTERNALS__" in window);
 
 function call<T>(cmd: string, args: Record<string, unknown> | undefined, fallback: () => T): Promise<T> {
@@ -165,7 +232,30 @@ export const api = {
       errors: [],
     })),
   appInfo: () => call<AppInfo>("app_info", undefined, () => sample.appInfo),
+  listModels: () => call<ModelsView>("list_models", undefined, () => sample.modelsView()),
+  downloadModel: (id: string) => call<void>("download_model", { id }, () => sample.startDownload(id)),
+  cancelDownload: (id: string) => call<void>("cancel_download", { id }, () => sample.cancelDownload(id)),
+  deleteModel: (id: string) => call<void>("delete_model", { id }, () => sample.deleteModel(id)),
+  engineStatus: () => call<EngineView>("engine_status", undefined, () => sample.engineView()),
+  installEngine: (id: string) => call<void>("install_engine", { id }, () => sample.installEngine(id)),
+  getSettings: () => call<SettingsView>("get_settings", undefined, () => sample.settingsView()),
+  setSetting: (key: SettingKey, value: string) =>
+    call<SettingsView>("set_setting", { key, value }, () => sample.setSetting(key, value)),
 };
+
+export interface DownloadListeners {
+  onProgress: (p: DownloadProgress) => void;
+  onDone: (d: DownloadDone) => void;
+}
+
+export async function listenToDownloads(l: DownloadListeners): Promise<UnlistenFn> {
+  if (isPreview) return sample.listenDownloads(l);
+  const offs = await Promise.all([
+    listen<DownloadProgress>("download-progress", (e) => l.onProgress(e.payload)),
+    listen<DownloadDone>("download-done", (e) => l.onDone(e.payload)),
+  ]);
+  return () => offs.forEach((off) => off());
+}
 
 export interface RunListeners {
   onEvent: (e: RunEvent) => void;
@@ -187,6 +277,10 @@ export async function listenToRuns(l: RunListeners): Promise<UnlistenFn> {
 export const GIB = 1024 ** 3;
 export const gb = (bytes: number | null | undefined, digits = 1) =>
   bytes == null ? "Unknown" : `${(bytes / GIB).toFixed(digits)} GB`;
+
+/** Download sizes, in decimal units like browsers and stores show them. */
+export const size = (bytes: number) =>
+  bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`;
 
 export function formatDuration(ms: number): string {
   const s = Math.round(ms / 1000);

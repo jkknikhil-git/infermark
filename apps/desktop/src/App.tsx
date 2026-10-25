@@ -8,7 +8,8 @@ import RunPage from "./pages/RunPage";
 import ResultsPage from "./pages/ResultsPage";
 import PacksPage from "./pages/PacksPage";
 import SettingsPage from "./pages/SettingsPage";
-import { ComparePage, ModelsPage } from "./pages/ComingSoon";
+import { ComparePage } from "./pages/ComingSoon";
+import ModelsPage from "./pages/ModelsPage";
 
 export type PageId = "device" | "run" | "results" | "compare" | "models" | "packs" | "settings";
 
@@ -90,7 +91,7 @@ export default function App() {
         {page === "run" && <RunPage run={run} dispatch={dispatchRun} onShowResult={showResult} />}
         {page === "results" && <ResultsPage openPath={openResult} onOpen={setOpenResult} onRun={() => go("run")} />}
         {page === "compare" && <ComparePage />}
-        {page === "models" && <ModelsPage />}
+        {page === "models" && <ModelsPage onOpenSettings={() => go("settings")} />}
         {page === "packs" && <PacksPage />}
         {page === "settings" && <SettingsPage prefs={prefs} onChange={setPrefs} />}
       </main>

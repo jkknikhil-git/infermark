@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, type AppInfo } from "../api";
-import { Icon, PageHeader } from "../components/ui";
+import { api, type AppInfo, type SettingKey, type SettingsView } from "../api";
+import { Banner, Icon, PageHeader } from "../components/ui";
 import { ACCENTS, type Preferences, type ThemeMode } from "../theme";
 
 const MODES: { id: ThemeMode; label: string; icon: string }[] = [
@@ -54,6 +54,8 @@ export default function SettingsPage({ prefs, onChange }: { prefs: Preferences; 
         </div>
       </section>
 
+      <StorageCard />
+
       <section className="card">
         <h2 className="title-medium">Your data</h2>
         <p className="body-medium muted">
@@ -77,7 +79,7 @@ export default function SettingsPage({ prefs, onChange }: { prefs: Preferences; 
           {[
             ["cloud_off", "No telemetry or analytics", "InferMark never phones home."],
             ["person_off", "No account needed", "Results contain no names, usernames or file paths."],
-            ["download", "Network only when you ask", "Used only to download models you choose."],
+            ["download", "Network only when you ask", "Used only to download models and the engine you choose, each checked against its fingerprint."],
           ].map(([icon, title, body]) => (
             <div className="list-item" key={title}>
               <span className="lead ok">
@@ -104,5 +106,96 @@ export default function SettingsPage({ prefs, onChange }: { prefs: Preferences; 
         </dl>
       </section>
     </div>
+  );
+}
+
+/** Where models and engines are stored, plus the engine addresses. */
+function StorageCard() {
+  const [view, setView] = useState<SettingsView | null>(null);
+  const [draft, setDraft] = useState<Record<SettingKey, string>>({ storage_dir: "", llama_server: "", ollama_url: "" });
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<SettingKey | null>(null);
+
+  const load = (v: SettingsView) => {
+    setView(v);
+    setDraft({
+      storage_dir: v.settings.storage_dir ?? "",
+      llama_server: v.settings.llama_server ?? "",
+      ollama_url: v.settings.ollama_url,
+    });
+  };
+
+  useEffect(() => {
+    api.getSettings().then(load, (e) => setError(String(e)));
+  }, []);
+
+  const save = (key: SettingKey) => {
+    setError(null);
+    api.setSetting(key, draft[key]).then(
+      (v) => {
+        load(v);
+        setSaved(key);
+        window.setTimeout(() => setSaved(null), 2000);
+      },
+      (e) => setError(String(e)),
+    );
+  };
+
+  const field = (key: SettingKey, label: string, help: string, placeholder: string) => {
+    const current =
+      key === "ollama_url" ? view?.settings.ollama_url ?? "" : (view?.settings[key] as string | undefined) ?? "";
+    const dirty = draft[key] !== current;
+    return (
+      <div className="field">
+        <label className="label-large" htmlFor={`setting-${key}`}>
+          {label}
+        </label>
+        <div className="row" style={{ flexWrap: "nowrap" }}>
+          <input
+            id={`setting-${key}`}
+            className="text-input mono"
+            value={draft[key]}
+            placeholder={placeholder}
+            spellCheck={false}
+            onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
+            onKeyDown={(e) => e.key === "Enter" && dirty && save(key)}
+          />
+          <button className="btn tonal" disabled={!dirty} onClick={() => save(key)}>
+            {saved === key ? <Icon name="check" /> : null}
+            {saved === key ? "Saved" : "Save"}
+          </button>
+        </div>
+        <span className="body-small muted">{help}</span>
+      </div>
+    );
+  };
+
+  return (
+    <section className="card">
+      <h2 className="title-medium">Storage and engines</h2>
+      {error && (
+        <Banner error icon="error">
+          {error}
+        </Banner>
+      )}
+      {field(
+        "storage_dir",
+        "Storage folder",
+        `Downloaded models and the llama.cpp engine go here (they can take many GB). Leave empty for the default. Files already downloaded are not moved.`,
+        view?.default_storage_dir ?? "",
+      )}
+      {field(
+        "ollama_url",
+        "Ollama address",
+        "Only used if you benchmark models you already have in Ollama.",
+        "http://127.0.0.1:11434",
+      )}
+      {field(
+        "llama_server",
+        "Custom llama-server (advanced)",
+        "Use your own llama.cpp build instead of the one InferMark installs. Leave empty to use the installed one.",
+        "path to llama-server",
+      )}
+    </section>
   );
 }
