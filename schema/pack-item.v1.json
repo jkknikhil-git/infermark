@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PackItem",
+  "description": "One line of `items.jsonl`.",
+  "type": "object",
+  "required": [
+    "id",
+    "input"
+  ],
+  "properties": {
+    "choices": {
+      "description": "Options for multiple-choice items, rendered as `A) …`, `B) …`.",
+      "default": null,
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "expected": {
+      "description": "Accepted answer(s). A single string or a list of alternatives.",
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Expected"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "id": {
+      "type": "string"
+    },
+    "input": {
+      "type": "string"
+    },
+    "metadata": {
+      "default": null
+    },
+    "rubric": {
+      "description": "Grading instructions for judge-based scorers.",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tags": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tests": {
+      "description": "Test code for `code_exec` items.",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "Expected": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    }
+  }
+}

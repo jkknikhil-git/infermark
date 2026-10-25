@@ -1,0 +1,310 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Profile",
+  "type": "object",
+  "required": [
+    "name",
+    "schema"
+  ],
+  "properties": {
+    "description": {
+      "default": "",
+      "type": "string"
+    },
+    "gate": {
+      "default": {
+        "allow_ineligible": false,
+        "memory_margin": 0.85,
+        "min_tokens_per_sec": 2.0
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/GateSettings"
+        }
+      ]
+    },
+    "models": {
+      "default": {
+        "catalog": [],
+        "local_paths": [],
+        "max_params_b": null,
+        "ollama": []
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/ModelSelection"
+        }
+      ]
+    },
+    "modules": {
+      "description": "Modules to run, in order. Keys are module ids; values hold `enabled` plus module settings.",
+      "default": {},
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/ModuleSelection"
+      }
+    },
+    "name": {
+      "type": "string"
+    },
+    "packs": {
+      "default": {
+        "exclude": [],
+        "include": [],
+        "max_items_per_pack": null
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/PackSelection"
+        }
+      ]
+    },
+    "run": {
+      "default": {
+        "backend": "auto",
+        "context_sizes": [
+          512,
+          2048
+        ],
+        "gpu_layers": null,
+        "repeats": 3,
+        "seed": 42,
+        "think": false,
+        "threads": null,
+        "warmups": 1
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/RunSettings"
+        }
+      ]
+    },
+    "schema": {
+      "description": "File format version; must be 1.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "scoring": {
+      "default": {
+        "efficiency": 0.1,
+        "endurance": 0.15,
+        "quality": 0.3,
+        "responsiveness": 0.2,
+        "speed": 0.25
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/ScoringWeights"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "GateSettings": {
+      "description": "Thresholds that decide which models are too big or too slow for this device.",
+      "type": "object",
+      "properties": {
+        "allow_ineligible": {
+          "description": "Run models even when the gate says they won't fit (\"I know what I'm doing\").",
+          "default": false,
+          "type": "boolean"
+        },
+        "memory_margin": {
+          "description": "Fraction of available memory a model may use.",
+          "default": 0.85,
+          "type": "number",
+          "format": "double"
+        },
+        "min_tokens_per_sec": {
+          "description": "Skip models predicted to generate slower than this.",
+          "default": 2.0,
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ModelSelection": {
+      "type": "object",
+      "properties": {
+        "catalog": {
+          "description": "Catalog model ids; empty = let the gate pick from the whole catalog.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "local_paths": {
+          "description": "Extra local `.gguf` files to benchmark.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_params_b": {
+          "description": "Ignore catalog models larger than this many billion parameters.",
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "ollama": {
+          "description": "Models already installed in Ollama, e.g. `llama3.1:8b`.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ModuleSelection": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "PackSelection": {
+      "type": "object",
+      "properties": {
+        "exclude": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "include": {
+          "description": "Pack ids to run; `[\"*\"]` = every installed pack.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_items_per_pack": {
+          "description": "Use at most this many items per pack (handy for quick runs).",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "RunSettings": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "description": "`auto`, `llama-cpp`, `ollama`, …",
+          "default": "auto",
+          "type": "string"
+        },
+        "context_sizes": {
+          "description": "Prompt lengths (tokens) used by context-scaling tests.",
+          "default": [
+            512,
+            2048
+          ],
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        },
+        "gpu_layers": {
+          "description": "Layers to offload to the GPU; `None` = automatic, 0 = CPU only.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "repeats": {
+          "description": "Measured repetitions per test (results report the median).",
+          "default": 3,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "seed": {
+          "default": 42,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "think": {
+          "description": "Allow reasoning (\"thinking\") output for models that support it.",
+          "default": false,
+          "type": "boolean"
+        },
+        "threads": {
+          "description": "CPU threads for inference; `None` = let the backend decide.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "warmups": {
+          "description": "Unmeasured warm-up runs before measuring.",
+          "default": 1,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "ScoringWeights": {
+      "description": "Relative weights of the sub-scores in the overall InferMark Score.",
+      "type": "object",
+      "properties": {
+        "efficiency": {
+          "default": 0.1,
+          "type": "number",
+          "format": "double"
+        },
+        "endurance": {
+          "default": 0.15,
+          "type": "number",
+          "format": "double"
+        },
+        "quality": {
+          "default": 0.3,
+          "type": "number",
+          "format": "double"
+        },
+        "responsiveness": {
+          "default": 0.2,
+          "type": "number",
+          "format": "double"
+        },
+        "speed": {
+          "default": 0.25,
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

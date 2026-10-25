@@ -1,0 +1,32 @@
+# Full: everything this device is eligible for. Can take several hours.
+schema = 1
+name = "Full"
+description = "Everything your device can run: all eligible models, all packs, 20-minute endurance test."
+
+[run]
+repeats = 5
+warmups = 2
+context_sizes = [512, 2048, 8192, 32768]
+
+[packs]
+include = ["*"]
+
+[modules.system-probe]
+
+[modules.memory-bandwidth]
+size_mb = 512
+iterations = 10
+
+[modules.inference-perf]
+
+[modules.context-scaling]
+
+[modules.quant-comparison]
+
+[modules.sustained-load]
+minutes = 20
+
+[modules.battery-drain]
+enabled = false   # turn on and unplug the charger to include it
+
+[modules.quality-packs]

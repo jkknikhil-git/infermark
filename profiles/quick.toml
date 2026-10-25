@@ -1,0 +1,27 @@
+# Quick: about 5 minutes. One small model, the essentials.
+schema = 1
+name = "Quick"
+description = "About 5 minutes. Hardware check, memory speed and one small model."
+
+[run]
+repeats = 2
+warmups = 1
+context_sizes = [512]
+
+[models]
+max_params_b = 4.0
+
+[packs]
+include = ["everyday"]
+max_items_per_pack = 5
+
+[modules.system-probe]
+
+[modules.memory-bandwidth]
+size_mb = 128
+iterations = 3
+
+[modules.inference-perf]
+max_models = 1
+
+[modules.quality-packs]

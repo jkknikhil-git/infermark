@@ -1,0 +1,3 @@
+{"id": "a", "input": "ok"}
+{"id": "a", "input": "duplicate id"}
+{"id": "c", "input": "unknown field", "answer": "x"}

@@ -1,0 +1,27 @@
+[package]
+name = "infermark-core"
+description = "InferMark module registry, planner, runner, profiles and test packs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+infermark-sdk.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+toml.workspace = true
+indexmap.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+dirs.workspace = true
+regex = "1"
+
+[dev-dependencies]
+infermark-hwprobe.workspace = true
+tempfile.workspace = true

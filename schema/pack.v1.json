@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PackManifest",
+  "description": "Contents of `pack.toml`.",
+  "type": "object",
+  "required": [
+    "category",
+    "id",
+    "license",
+    "name",
+    "schema",
+    "scorer",
+    "version"
+  ],
+  "properties": {
+    "authors": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "category": {
+      "description": "Grouping shown in results, e.g. `coding`, `reasoning`, `summarization`.",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "type": "string"
+    },
+    "generation": {
+      "default": {
+        "max_tokens": 512,
+        "stop": [],
+        "temperature": 0.0
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/GenerationSettings"
+        }
+      ]
+    },
+    "id": {
+      "description": "Stable kebab-case id, unique across installed packs.",
+      "type": "string"
+    },
+    "license": {
+      "description": "SPDX license of the items (e.g. `Apache-2.0`, `CC-BY-4.0`).",
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "prompt": {
+      "default": {
+        "system": null,
+        "template": "{{input}}"
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/PromptTemplate"
+        }
+      ]
+    },
+    "schema": {
+      "description": "File format version; must be 1.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "scorer": {
+      "description": "Scorer id, e.g. `exact_match`, `multiple_choice`, `regex`, `json_schema`, `llm_judge`.",
+      "type": "string"
+    },
+    "scorer_options": {
+      "description": "Extra options passed to the scorer.",
+      "default": {},
+      "type": "object",
+      "additionalProperties": true
+    },
+    "subjective": {
+      "description": "True when scores are opinion-based (creative writing); shown with a label in the UI.",
+      "default": false,
+      "type": "boolean"
+    },
+    "version": {
+      "description": "Semantic version of the pack contents (bump when items change).",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "GenerationSettings": {
+      "type": "object",
+      "properties": {
+        "max_tokens": {
+          "default": 512,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "stop": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "temperature": {
+          "default": 0.0,
+          "type": "number",
+          "format": "float"
+        }
+      },
+      "additionalProperties": false
+    },
+    "PromptTemplate": {
+      "type": "object",
+      "properties": {
+        "system": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "template": {
+          "description": "User message template. Placeholders: `{{input}}`, `{{choices}}`.",
+          "default": "{{input}}",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

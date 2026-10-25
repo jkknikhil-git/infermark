@@ -1,0 +1,20 @@
+# Laptop battery: how long can you chat with a local model on battery?
+# Unplug the charger before starting.
+schema = 1
+name = "Laptop battery"
+description = "Unplug first. Measures battery drain per 10k tokens and estimates hours of local chat."
+
+[run]
+repeats = 1
+warmups = 1
+
+[models]
+max_params_b = 4.0
+
+[modules.system-probe]
+
+[modules.battery-drain]
+minutes = 15
+
+[modules.sustained-load]
+minutes = 15

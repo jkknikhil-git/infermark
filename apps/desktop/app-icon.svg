@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="224" fill="#1a73e8"/>
+  <!-- gauge arc -->
+  <path d="M232 640a280 280 0 0 1 560 0" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="72" stroke-linecap="round"/>
+  <path d="M232 640a280 280 0 0 1 420-242" fill="none" stroke="#ffffff" stroke-width="72" stroke-linecap="round"/>
+  <!-- needle -->
+  <path d="M512 640 L668 452" stroke="#ffffff" stroke-width="48" stroke-linecap="round"/>
+  <circle cx="512" cy="640" r="56" fill="#ffffff"/>
+  <!-- token bars -->
+  <rect x="352" y="760" width="72" height="48" rx="24" fill="#ffffff" fill-opacity="0.6"/>
+  <rect x="476" y="760" width="72" height="48" rx="24" fill="#ffffff" fill-opacity="0.8"/>
+  <rect x="600" y="760" width="72" height="48" rx="24" fill="#ffffff"/>
+</svg>

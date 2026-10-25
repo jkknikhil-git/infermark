@@ -1,0 +1,16 @@
+schema = 1
+id = "sample-trivia"
+name = "Sample trivia"
+version = "1.0.0"
+description = "Fixture pack used by the test suite."
+category = "knowledge"
+scorer = "multiple_choice"
+license = "Apache-2.0"
+authors = ["InferMark contributors"]
+
+[prompt]
+system = "Answer with the letter of the correct option only."
+template = "{{input}}\n\n{{choices}}"
+
+[generation]
+max_tokens = 8

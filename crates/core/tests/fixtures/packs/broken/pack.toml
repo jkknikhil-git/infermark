@@ -1,0 +1,7 @@
+schema = 1
+id = "Broken_Pack"
+name = "Broken"
+version = "1.0.0"
+category = "knowledge"
+scorer = "does_not_exist"
+license = ""

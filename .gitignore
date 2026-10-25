@@ -1,0 +1,33 @@
+# Rust
+/target/
+**/target/
+
+# Node / frontend
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Models, results and local data (never commit weights)
+models/
+*.gguf
+*.safetensors
+*.onnx
+/results/
+
+# Python leftovers
+venv/
+.venv/
+__pycache__/
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Tauri generated
+apps/desktop/src-tauri/gen/schemas/
+
+# Local Claude Code settings
+.claude/

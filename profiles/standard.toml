@@ -1,0 +1,32 @@
+# Standard: the recommended run (about 30 minutes).
+schema = 1
+name = "Standard"
+description = "About 30 minutes. Speed, context scaling, a short endurance test and core quality packs."
+
+[run]
+repeats = 3
+warmups = 1
+context_sizes = [512, 2048, 8192]
+
+[models]
+max_params_b = 9.0
+
+[packs]
+include = ["everyday", "reasoning", "coding", "instruction-following", "structured-output"]
+max_items_per_pack = 20
+
+[modules.system-probe]
+
+[modules.memory-bandwidth]
+size_mb = 256
+iterations = 5
+
+[modules.inference-perf]
+max_models = 3
+
+[modules.context-scaling]
+
+[modules.sustained-load]
+minutes = 5
+
+[modules.quality-packs]
