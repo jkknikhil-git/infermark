@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 rust-version.workspace = true
+publish = false
 
 [dependencies]
 infermark-sdk.workspace = true
@@ -15,7 +16,7 @@ serde_json.workspace = true
 sha2.workspace = true
 hex.workspace = true
 sysinfo.workspace = true
-starship-battery = "0.10"
+starship-battery = "0.12"
 nvml-wrapper = "0.10"
 
 [target.'cfg(windows)'.dependencies]

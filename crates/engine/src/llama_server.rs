@@ -144,6 +144,7 @@ fn run_for_output(exe: &Path, arg: &str) -> Option<String> {
 }
 
 /// Don't flash a console window when the desktop app starts the server on Windows.
+#[cfg_attr(not(windows), allow(unused_mut))]
 fn hidden(mut cmd: Command) -> Command {
     #[cfg(windows)]
     {

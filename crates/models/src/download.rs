@@ -319,11 +319,11 @@ pub fn extract_zip(archive: &Path, dest: &Path) -> Result<Vec<PathBuf>, Download
         let mut entry = zip
             .by_index(i)
             .map_err(|e| DownloadError::Archive(e.to_string()))?;
+        // Entries are always written as plain files (never symlinks or with stored permission
+        // bits), and only inside `dest`.
         let Some(rel) = entry.enclosed_name() else {
-            return Err(DownloadError::Archive(format!(
-                "unsafe path `{}`",
-                entry.name()
-            )));
+            let name = entry.name().map(|n| n.into_owned()).unwrap_or_default();
+            return Err(DownloadError::Archive(format!("unsafe path `{name}`")));
         };
         let out_path = dest.join(rel);
         if entry.is_dir() {
