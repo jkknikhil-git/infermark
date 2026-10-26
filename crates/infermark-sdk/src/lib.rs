@@ -38,9 +38,12 @@ pub use profile::{
     is_kebab_id, GateSettings, ModelSelection, ModuleSelection, PackSelection, Profile,
     ProfileError, RunSettings, ScoringWeights,
 };
-pub use result::{ModuleRecord, ModuleStatus, PlanEntry, PlanStatus, RunResult};
+pub use result::{ModuleRecord, ModuleStatus, PlanEntry, PlanStatus, RunResult, Telemetry};
 pub use scorer::{ScoreResult, Scorer};
-pub use sensor::{SensorKind, SensorProvider, SensorReading};
+pub use sensor::{
+    SensorChannel, SensorInventory, SensorKind, SensorProvider, SensorReading, ThermalState,
+    STANDARD_CHANNELS,
+};
 
 /// Version of the result / profile / pack file formats produced by this SDK.
 pub const SCHEMA_VERSION: u32 = 1;

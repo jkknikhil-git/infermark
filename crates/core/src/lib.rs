@@ -22,7 +22,7 @@ pub mod settings;
 
 pub use planner::plan;
 pub use registry::Registry;
-pub use runner::{run, RunEvent};
+pub use runner::{run, run_with_sensors, RunEvent};
 
 // Re-exported so the CLI and app don't need to depend on them directly.
 pub use infermark_engine as engine;

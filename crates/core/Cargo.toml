@@ -13,6 +13,7 @@ publish = false
 infermark-sdk.workspace = true
 infermark-models.workspace = true
 infermark-engine.workspace = true
+infermark-telemetry.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 serde.workspace = true

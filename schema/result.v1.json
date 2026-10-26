@@ -56,6 +56,17 @@
     "started_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "telemetry": {
+      "description": "Sensor data sampled for the whole run. Absent in results from before telemetry existed.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Telemetry"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "definitions": {
@@ -1030,6 +1041,104 @@
       },
       "additionalProperties": false
     },
+    "SensorChannel": {
+      "description": "Something a provider can measure, e.g. `gpu0` + [`SensorKind::Power`].",
+      "type": "object",
+      "required": [
+        "kind",
+        "label",
+        "source"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/SensorKind"
+        },
+        "label": {
+          "description": "Human-readable, e.g. \"GPU power\".",
+          "type": "string"
+        },
+        "source": {
+          "description": "What is measured: `cpu`, `gpu0`, `battery`, `system`, `device`.",
+          "type": "string"
+        }
+      }
+    },
+    "SensorInventory": {
+      "description": "Which sensors existed during a run (recorded in results).",
+      "type": "object",
+      "required": [
+        "available",
+        "missing"
+      ],
+      "properties": {
+        "available": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SensorChannel"
+          }
+        },
+        "missing": {
+          "description": "Standard measurements this device doesn't offer, so the app can say so.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SensorChannel"
+          }
+        }
+      }
+    },
+    "SensorKind": {
+      "oneOf": [
+        {
+          "description": "°C",
+          "type": "string",
+          "enum": [
+            "temperature"
+          ]
+        },
+        {
+          "description": "MHz",
+          "type": "string",
+          "enum": [
+            "clock"
+          ]
+        },
+        {
+          "description": "Percent 0-100",
+          "type": "string",
+          "enum": [
+            "utilization"
+          ]
+        },
+        {
+          "description": "Watts (drawn by the component; for a battery, the discharge rate)",
+          "type": "string",
+          "enum": [
+            "power"
+          ]
+        },
+        {
+          "description": "Bytes",
+          "type": "string",
+          "enum": [
+            "memory-used"
+          ]
+        },
+        {
+          "description": "Percent 0-100",
+          "type": "string",
+          "enum": [
+            "battery-charge"
+          ]
+        },
+        {
+          "description": "[`ThermalState`] as 0-3. Phones and macOS report this instead of temperatures.",
+          "type": "string",
+          "enum": [
+            "thermal-state"
+          ]
+        }
+      ]
+    },
     "Series": {
       "description": "A time series (or any x/y series) for graphs.",
       "type": "object",
@@ -1070,6 +1179,37 @@
         },
         "y_unit": {
           "type": "string"
+        }
+      }
+    },
+    "Telemetry": {
+      "description": "Background sensor readings recorded while the run was going.",
+      "type": "object",
+      "required": [
+        "interval_ms",
+        "sensors"
+      ],
+      "properties": {
+        "interval_ms": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "sensors": {
+          "description": "Which sensors this device offered, and which standard ones it didn't.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SensorInventory"
+            }
+          ]
+        },
+        "series": {
+          "description": "One series per sensor that produced values, keyed `source.kind` (e.g. `cpu.utilization`); x is seconds since the run started.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Series"
+          }
         }
       }
     }

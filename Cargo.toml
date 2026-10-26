@@ -6,6 +6,7 @@ members = [
     "crates/hwprobe",
     "crates/models",
     "crates/engine",
+    "crates/telemetry",
     "apps/cli",
     "apps/desktop/src-tauri",
 ]
@@ -15,6 +16,7 @@ default-members = [
     "crates/hwprobe",
     "crates/models",
     "crates/engine",
+    "crates/telemetry",
     "apps/cli",
 ]
 
@@ -32,6 +34,7 @@ infermark-core = { path = "crates/core" }
 infermark-hwprobe = { path = "crates/hwprobe" }
 infermark-models = { path = "crates/models" }
 infermark-engine = { path = "crates/engine" }
+infermark-telemetry = { path = "crates/telemetry" }
 
 anyhow = "1"
 thiserror = "2"

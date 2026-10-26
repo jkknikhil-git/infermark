@@ -61,7 +61,7 @@ export function useRunState() {
         if (e.type === "module-started") dispatch({ type: "started", moduleId: e.module_id, index: e.index, total: e.total });
         else if (e.type === "module-progress")
           dispatch({ type: "progress", moduleId: e.module_id, fraction: e.progress.fraction, message: e.progress.message });
-        else dispatch({ type: "module-done", record: e.record });
+        else if (e.type === "module-finished") dispatch({ type: "module-done", record: e.record });
       },
       onFinished: (summary) => dispatch({ type: "finished", summary }),
       onError: (message) => dispatch({ type: "error", message }),

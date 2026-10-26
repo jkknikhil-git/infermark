@@ -6,6 +6,7 @@ crates/
   hwprobe/         Hardware detection (CPU, GPU via DXGI / sysfs / system_profiler, NVML, NPU, battery).
   models/          Model catalog, GGUF header reader, hardware gate, verified resumable downloader.
   engine/          Inference backends: llama.cpp (`llama-server` child process) and Ollama (HTTP).
+  telemetry/       Background sensor sampler and per-platform sensor providers.
   core/            Registry, planner, runner, profiles, packs, settings, built-in modules and scorers,
                    JSON Schemas.
 apps/
@@ -103,3 +104,20 @@ installed into the storage folder; a custom `llama-server` can be set in setting
 
 Every note and error a module produces is passed through `privacy::redact` before it is saved, so
 engine logs can't leak the account name through file paths.
+
+## Telemetry
+
+```text
+SensorProvider::channels()  ─► what this device can measure (CPU load, GPU power, battery drain, …)
+SensorProvider::sample()    ─► one reading per channel, `None` when it couldn't be read
+Sampler (1 s, own thread)   ─► bounded series (thinned evenly past 1200 points)
+RunResult.telemetry         ─► { sensors: { available, missing }, interval_ms, series }
+```
+
+Devices expose very different sensors: Windows usually hides CPU temperature from normal
+users, NVIDIA GPUs report power through NVML, Android phones give battery current and a thermal
+status, iPhones only a coarse thermal state. A sensor that doesn't exist is listed under
+`sensors.missing`, and an unreadable value is skipped, so charts can say "not available on this
+device" instead of drawing zeros. Desktop providers live in `crates/telemetry`; phones will add
+their own through a Tauri mobile plugin and pass them to `core::run_with_sensors`. Try
+`cargo run -p infermark-telemetry --example sensors` to see what a machine offers.

@@ -102,6 +102,20 @@ export interface RunResult {
   profile: Profile;
   plan: PlanEntry[];
   modules: ModuleRecord[];
+  /** Sensor data for the whole run; absent in older results. */
+  telemetry?: Telemetry;
+}
+
+export interface SensorChannel {
+  source: string;
+  kind: "temperature" | "clock" | "utilization" | "power" | "memory-used" | "battery-charge" | "thermal-state";
+  label: string;
+}
+
+export interface Telemetry {
+  sensors: { available: SensorChannel[]; missing: SensorChannel[] };
+  interval_ms: number;
+  series: { key: string; label: string; x_unit: string; y_unit: string; points: [number, number][] }[];
 }
 
 export type RunEvent =

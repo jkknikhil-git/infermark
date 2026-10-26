@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::hardware::HardwareInfo;
-use crate::module::{ModuleDescriptor, ModuleOutput};
+use crate::module::{ModuleDescriptor, ModuleOutput, Series};
 use crate::profile::Profile;
+use crate::sensor::SensorInventory;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct RunResult {
@@ -21,6 +22,21 @@ pub struct RunResult {
     pub profile: Profile,
     pub plan: Vec<PlanEntry>,
     pub modules: Vec<ModuleRecord>,
+    /// Sensor data sampled for the whole run. Absent in results from before telemetry existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub telemetry: Option<Telemetry>,
+}
+
+/// Background sensor readings recorded while the run was going.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct Telemetry {
+    /// Which sensors this device offered, and which standard ones it didn't.
+    pub sensors: SensorInventory,
+    pub interval_ms: u64,
+    /// One series per sensor that produced values, keyed `source.kind` (e.g. `cpu.utilization`);
+    /// x is seconds since the run started.
+    #[serde(default)]
+    pub series: Vec<Series>,
 }
 
 /// What the planner decided for one module, before anything ran.

@@ -1717,6 +1717,7 @@ dependencies = [
  "infermark-hwprobe",
  "infermark-models",
  "infermark-sdk",
+ "infermark-telemetry",
  "regex",
  "schemars 0.8.22",
  "serde",
@@ -1806,6 +1807,16 @@ dependencies = [
  "thiserror 2.0.21",
  "toml 0.8.23",
  "uuid",
+]
+
+[[package]]
+name = "infermark-telemetry"
+version = "0.1.0"
+dependencies = [
+ "infermark-sdk",
+ "nvml-wrapper",
+ "starship-battery",
+ "sysinfo",
 ]
 
 [[package]]

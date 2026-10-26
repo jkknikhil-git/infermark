@@ -1,11 +1,12 @@
 use std::sync::atomic::AtomicBool;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use infermark_sdk::{
     HardwareInfo, ModuleError, ModuleOutput, ModuleRecord, ModuleStatus, PlanStatus, Profile,
-    Progress, RunContext, RunResult, SCHEMA_VERSION,
+    Progress, RunContext, RunResult, SensorProvider, Telemetry, SCHEMA_VERSION,
 };
+use infermark_telemetry::{Sampler, DEFAULT_MAX_POINTS};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -29,8 +30,12 @@ pub enum RunEvent {
     },
 }
 
+/// How often sensors are sampled during a run.
+pub const TELEMETRY_INTERVAL: Duration = Duration::from_secs(1);
+
 /// Plan and run a profile. Skipped modules are recorded with their reason; a failing module
-/// doesn't stop the run. Setting `cancel` stops after the current module.
+/// doesn't stop the run. Setting `cancel` stops after the current module. Sensors available on
+/// this platform are sampled in the background for the whole run.
 pub fn run(
     profile: &Profile,
     registry: &Registry,
@@ -38,6 +43,26 @@ pub fn run(
     on_event: &(dyn Fn(RunEvent) + Send + Sync),
     cancel: &AtomicBool,
 ) -> RunResult {
+    run_with_sensors(
+        profile,
+        registry,
+        hardware,
+        on_event,
+        cancel,
+        infermark_telemetry::default_providers(),
+    )
+}
+
+/// Like [`run`], with explicit sensor providers (phones bring their own; tests pass none).
+pub fn run_with_sensors(
+    profile: &Profile,
+    registry: &Registry,
+    hardware: &HardwareInfo,
+    on_event: &(dyn Fn(RunEvent) + Send + Sync),
+    cancel: &AtomicBool,
+    sensors: Vec<Box<dyn SensorProvider>>,
+) -> RunResult {
+    let sampler = Sampler::start(sensors, TELEMETRY_INTERVAL, DEFAULT_MAX_POINTS, None);
     let started_at = Utc::now();
     let plan = plan(profile, registry, hardware);
     let total = plan.len();
@@ -130,7 +155,13 @@ pub fn run(
         records.push(record);
     }
 
+    let recording = sampler.stop();
     RunResult {
+        telemetry: Some(Telemetry {
+            sensors: recording.inventory,
+            interval_ms: recording.interval_ms,
+            series: recording.series,
+        }),
         schema: SCHEMA_VERSION,
         infermark_version: crate::VERSION.to_string(),
         run_id: Uuid::new_v4(),
