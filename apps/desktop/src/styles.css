@@ -265,7 +265,7 @@ h1, h2, h3, p { margin: 0; }
   gap: 16px;
 }
 
-.grid.tight { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.grid.tight { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 12px; }
 
 .row {
   display: flex;
@@ -494,6 +494,10 @@ button.list-item:focus-visible { outline: 3px solid var(--md-sys-color-primary);
 .sticky-actions {
   position: sticky;
   bottom: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
   padding: 16px 0;
   background: linear-gradient(to top, var(--md-sys-color-surface) 70%, transparent);
 }
@@ -545,3 +549,101 @@ code, .mono { font-family: "Roboto Mono", ui-monospace, Consolas, monospace; fon
   font-size: 14px;
 }
 .text-input:focus { outline: 2px solid var(--md-sys-color-primary); outline-offset: -1px; border-color: transparent; }
+
+/* ---------- Home (benchmark-app layout: score and Start first) ---------- */
+.hero { gap: 20px; }
+.hero-device { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.hero-score { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.hero-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.hero-link { align-self: flex-start; margin-top: -8px; }
+
+.btn.large { height: 56px; padding: 0 28px; border-radius: 28px; font-size: 16px; }
+.btn.large .icon { font-size: 24px; }
+.btn.on-container { color: var(--md-sys-color-on-primary-container); }
+.btn.outlined.on-container { border-color: color-mix(in srgb, currentColor 40%, transparent); }
+
+.select-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  color: inherit;
+}
+.select-chip select {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  height: 100%;
+  padding: 0 32px 0 14px;
+  cursor: pointer;
+}
+.select-chip select:focus-visible { outline: 3px solid var(--md-sys-color-primary); border-radius: var(--radius-sm); }
+.select-chip .icon { position: absolute; right: 6px; pointer-events: none; }
+.select-chip option { color: var(--md-sys-color-on-surface); background: var(--md-sys-color-surface); }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.page-header .back { margin: -4px -4px 0 -12px; }
+.page-header:has(.back) { flex-wrap: nowrap; justify-content: flex-start; }
+.page-header:has(.back) .titles { flex: 1; min-width: 0; }
+
+/* ---------- Live run ---------- */
+.live-run { gap: 12px; }
+
+/* ---------- Expandable rows (results categories, test log) ---------- */
+details > summary { list-style: none; cursor: pointer; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary .icon:last-child { transition: transform 200ms var(--ease); color: var(--md-sys-color-on-surface-variant); }
+details[open] > summary .icon:last-child { transform: rotate(180deg); }
+details > summary:focus-visible { outline: 3px solid var(--md-sys-color-primary); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+.category + .category { border-top: 1px solid var(--md-sys-color-outline-variant); }
+.category > summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 72px;
+  padding: 8px 0;
+}
+.category > summary[aria-disabled="true"] { cursor: default; }
+.category > summary .content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.category-body { display: flex; flex-direction: column; gap: 16px; padding: 0 0 16px 56px; }
+.metric-group { display: flex; flex-direction: column; gap: 8px; }
+.avatar.muted-avatar { background: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-on-surface-variant); }
+
+.disclosure > summary { display: flex; align-items: center; gap: 12px; min-height: 48px; }
+.disclosure:not([open]) { gap: 0; }
+
+/* ---------- Phones ---------- */
+@media (max-width: 640px) {
+  /* Bottom navigation bar stays put and clears the gesture bar / home indicator. */
+  .rail { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .page { padding-top: calc(20px + env(safe-area-inset-top)); }
+  /* Full-screen flows (the run screen) hide the navigation bar, like a phone app. */
+  .app.flow .rail { display: none; }
+  .hero-actions .btn.large { flex: 1 1 100%; }
+  .category-body { padding-left: 0; }
+  .sticky-actions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+  .sticky-actions .btn.large { width: 100%; }
+}
+
+/* Touch screens: every control gets at least a 48 px target. */
+@media (pointer: coarse) {
+  .icon-btn { width: 48px; height: 48px; }
+  .btn:not(.large) { min-height: 48px; }
+  .rail-item { min-height: 56px; justify-content: center; }
+}
+
+.card.score-pending { gap: 4px; padding: 16px 20px; }

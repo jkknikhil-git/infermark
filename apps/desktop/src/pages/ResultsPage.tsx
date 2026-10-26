@@ -1,24 +1,27 @@
 import { useEffect, useState } from "react";
 import { api, formatDate, formatDuration, type ModuleRecord, type ResultSummary, type RunResult } from "../api";
 import { Banner, EmptyState, Icon, PageHeader } from "../components/ui";
+import { categorize, formatNumber, type CategoryView } from "../summary";
 
 export default function ResultsPage({
   openPath,
   onOpen,
   onRun,
+  onCompare,
 }: {
   openPath: string | null;
   onOpen: (path: string | null) => void;
   onRun: () => void;
+  onCompare: () => void;
 }) {
   return openPath ? (
     <ResultDetail path={openPath} onBack={() => onOpen(null)} />
   ) : (
-    <ResultList onOpen={onOpen} onRun={onRun} />
+    <ResultList onOpen={onOpen} onRun={onRun} onCompare={onCompare} />
   );
 }
 
-function ResultList({ onOpen, onRun }: { onOpen: (path: string) => void; onRun: () => void }) {
+function ResultList({ onOpen, onRun, onCompare }: { onOpen: (path: string) => void; onRun: () => void; onCompare: () => void }) {
   const [results, setResults] = useState<ResultSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,8 +31,23 @@ function ResultList({ onOpen, onRun }: { onOpen: (path: string) => void; onRun: 
 
   return (
     <div className="page">
-      <PageHeader title="Results" subtitle="Every benchmark you've run on this device, newest first." />
-      {error && <Banner error icon="error">{error}</Banner>}
+      <PageHeader
+        title="Results"
+        subtitle="Every benchmark you've run on this device, newest first."
+        actions={
+          results && results.length > 0 ? (
+            <button className="btn text" onClick={onCompare}>
+              <Icon name="compare_arrows" />
+              Compare
+            </button>
+          ) : undefined
+        }
+      />
+      {error && (
+        <Banner error icon="error">
+          {error}
+        </Banner>
+      )}
       {results && results.length === 0 && (
         <EmptyState
           icon="insights"
@@ -47,11 +65,7 @@ function ResultList({ onOpen, onRun }: { onOpen: (path: string) => void; onRun: 
       {results && results.length > 0 && (
         <div className="list card outlined" style={{ padding: "4px 16px" }}>
           {results.map((r) => (
-            <button
-              key={r.path}
-              className="list-item"
-              onClick={() => onOpen(r.path)}
-            >
+            <button key={r.path} className="list-item" onClick={() => onOpen(r.path)}>
               <span className="avatar">
                 <Icon name="speed" />
               </span>
@@ -81,73 +95,126 @@ function ResultDetail({ path, onBack }: { path: string; onBack: () => void }) {
   }, [path]);
 
   const names = new Map(result?.plan.map((p) => [p.module_id, p.descriptor?.name ?? p.module_id]));
+  const categories = result ? categorize(result) : [];
 
   return (
     <div className="page">
       <PageHeader
+        onBack={onBack}
         title={result ? `${result.profile.name} benchmark` : "Result"}
         subtitle={
           result
-            ? `${formatDate(result.started_at)} · took ${formatDuration(Date.parse(result.finished_at) - Date.parse(result.started_at))} · InferMark ${result.infermark_version}`
+            ? `${formatDate(result.started_at)} · took ${formatDuration(Date.parse(result.finished_at) - Date.parse(result.started_at))}`
             : undefined
         }
-        actions={
-          <button className="btn text" onClick={onBack}>
-            <Icon name="arrow_back" />
-            All results
-          </button>
-        }
       />
-      {error && <Banner error icon="error">{error}</Banner>}
-      {result?.modules.map((m) => <ModuleCard key={m.module_id} record={m} name={names.get(m.module_id) ?? m.module_id} />)}
+      {error && (
+        <Banner error icon="error">
+          {error}
+        </Banner>
+      )}
+
+      {result && (
+        <>
+          <section className="card primary score-pending" aria-label="Score">
+            <span className="label-medium">INFERMARK SCORE</span>
+            <span className="body-medium">
+              Combines the categories below. It arrives once the endurance, battery and quality tests are in.
+            </span>
+          </section>
+
+          <section className="card" aria-label="Categories" style={{ padding: "8px 16px" }}>
+            {categories.map((c) => (
+              <CategoryRow key={c.def.id} view={c} />
+            ))}
+          </section>
+
+          <details className="card disclosure">
+            <summary>
+              <Icon name="list_alt" />
+              <span className="title-medium" style={{ flex: 1 }}>
+                Test log
+              </span>
+              <Icon name="expand_more" />
+            </summary>
+            <div className="list">
+              {result.modules.map((m) => (
+                <LogRow key={m.module_id} record={m} name={names.get(m.module_id) ?? m.module_id} />
+              ))}
+            </div>
+            <p className="body-small muted">
+              InferMark {result.infermark_version} · device {result.hardware.fingerprint}
+            </p>
+          </details>
+        </>
+      )}
     </div>
   );
 }
 
-function ModuleCard({ record, name }: { record: ModuleRecord; name: string }) {
-  const s = record.status;
-  const chip =
-    s.status === "completed" ? (
-      <span className="chip success">
-        <Icon name="check" />
-        Done in {formatDuration(record.duration_ms)}
-      </span>
-    ) : s.status === "skipped" ? (
-      <span className="chip">Skipped</span>
-    ) : s.status === "failed" ? (
-      <span className="chip danger">Failed</span>
-    ) : (
-      <span className="chip">Stopped</span>
-    );
-
+function CategoryRow({ view }: { view: CategoryView }) {
+  const measured = view.groups.length > 0;
   return (
-    <section className="card">
-      <div className="row spread">
-        <h2 className="title-medium">{name}</h2>
-        {chip}
-      </div>
-      {s.status === "skipped" && <p className="body-medium muted">{s.reason}</p>}
-      {s.status === "failed" && <p className="body-medium muted">{s.error}</p>}
-      {record.output.metrics.length > 0 && (
-        <div className="grid tight">
-          {record.output.metrics.map((m) => (
-            <div className="metric" key={m.key}>
-              <span className="label-medium muted">{m.label}</span>
-              <span>
-                <span className="value">{formatValue(m.value)}</span>
-                {m.unit && <span className="unit">{m.unit}</span>}
-              </span>
+    <details className="category" open={view.def.id === "speed" && measured ? true : undefined}>
+      <summary aria-disabled={!measured}>
+        <span className={measured ? "avatar" : "avatar muted-avatar"}>
+          <Icon name={view.def.icon} />
+        </span>
+        <span className="content">
+          <span className="body-large">{view.def.name}</span>
+          <span className="body-medium muted">{measured ? view.headline : `Not measured: ${view.missing}`}</span>
+        </span>
+        {measured && <Icon name="expand_more" />}
+      </summary>
+      {measured && (
+        <div className="category-body">
+          <p className="body-small muted">{view.def.blurb}</p>
+          {view.groups.map((g) => (
+            <div key={g.title} className="metric-group">
+              <h3 className="title-small">{g.title}</h3>
+              <div className="grid tight">
+                {g.metrics.map((m) => (
+                  <div className="metric" key={m.key}>
+                    <span className="label-medium muted">{m.label}</span>
+                    <span>
+                      <span className="value">{formatNumber(m.value)}</span>
+                      {m.unit && <span className="unit">{m.unit}</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
       )}
-      {record.output.notes.map((n, i) => (
-        <Banner key={i}>{n}</Banner>
-      ))}
-    </section>
+    </details>
   );
 }
 
-function formatValue(v: number) {
-  return Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+function LogRow({ record, name }: { record: ModuleRecord; name: string }) {
+  const s = record.status;
+  const detail =
+    s.status === "completed"
+      ? `Done in ${formatDuration(record.duration_ms)}`
+      : s.status === "skipped"
+        ? `Skipped: ${s.reason}`
+        : s.status === "failed"
+          ? `Failed: ${s.error}`
+          : "Stopped";
+  return (
+    <div className="list-item" style={{ alignItems: "flex-start" }}>
+      <span className={s.status === "completed" ? "lead ok" : s.status === "failed" ? "lead bad" : "lead"}>
+        <Icon name={s.status === "completed" ? "check_circle" : s.status === "failed" ? "error" : "do_not_disturb_on"} />
+      </span>
+      <div className="content">
+        <span className="body-large">{name}</span>
+        <span className="body-medium muted">{detail}</span>
+        {record.output.notes.map((n, i) => (
+          <span key={i} className="body-small muted">
+            {n}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
 }

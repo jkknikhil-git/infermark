@@ -9,7 +9,15 @@ const MODES: { id: ThemeMode; label: string; icon: string }[] = [
   { id: "dark", label: "Dark", icon: "dark_mode" },
 ];
 
-export default function SettingsPage({ prefs, onChange }: { prefs: Preferences; onChange: (p: Preferences) => void }) {
+export default function SettingsPage({
+  prefs,
+  onChange,
+  onOpenTests,
+}: {
+  prefs: Preferences;
+  onChange: (p: Preferences) => void;
+  onOpenTests: () => void;
+}) {
   const [info, setInfo] = useState<AppInfo | null>(null);
   useEffect(() => {
     api.appInfo().then(setInfo);
@@ -51,6 +59,21 @@ export default function SettingsPage({ prefs, onChange }: { prefs: Preferences; 
               </button>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="card" aria-label="Benchmark content">
+        <div className="list">
+          <button className="list-item" onClick={onOpenTests}>
+            <span className="lead">
+              <Icon name="fact_check" />
+            </span>
+            <span className="content">
+              <span className="body-large">Test packs</span>
+              <span className="body-medium muted">Quality tests for coding, reasoning, summaries, and your own packs</span>
+            </span>
+            <Icon name="chevron_right" />
+          </button>
         </div>
       </section>
 

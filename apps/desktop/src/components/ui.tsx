@@ -9,9 +9,25 @@ export function Icon({ name, filled, small }: { name: string; filled?: boolean; 
   );
 }
 
-export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+export function PageHeader({
+  title,
+  subtitle,
+  actions,
+  onBack,
+}: {
+  title: string;
+  subtitle?: string;
+  actions?: ReactNode;
+  /** Shows a back arrow (sub-pages and full-screen flows). */
+  onBack?: () => void;
+}) {
   return (
     <header className="page-header">
+      {onBack && (
+        <button className="icon-btn back" aria-label="Back" title="Back" onClick={onBack}>
+          <Icon name="arrow_back" />
+        </button>
+      )}
       <div className="titles">
         <h1 className="headline-small">{title}</h1>
         {subtitle && <p className="body-medium muted">{subtitle}</p>}

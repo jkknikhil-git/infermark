@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type AppInfo, type PackSummary } from "../api";
 import { Banner, EmptyState, Icon, PageHeader } from "../components/ui";
 
-export default function PacksPage() {
+export default function PacksPage({ onBack }: { onBack: () => void }) {
   const [packs, setPacks] = useState<PackSummary[] | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [info, setInfo] = useState<AppInfo | null>(null);
@@ -18,7 +18,8 @@ export default function PacksPage() {
   return (
     <div className="page">
       <PageHeader
-        title="Tests"
+        onBack={onBack}
+        title="Test packs"
         subtitle="Quality test packs check how good a model's answers are: coding, reasoning, summaries and more."
       />
 

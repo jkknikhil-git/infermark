@@ -89,6 +89,11 @@ export function plan(_key: string): PlanEntry[] {
     { module_id: "memory-bandwidth", descriptor: membwD, status: { status: "planned" } },
     {
       module_id: "inference-perf",
+      descriptor: descriptor("inference-perf", "Inference speed", "How fast each model reads your prompt and writes its answer.", 90),
+      status: { status: "planned" },
+    },
+    {
+      module_id: "quality-packs",
       descriptor: null,
       status: { status: "skipped", reason: "not available in this build of InferMark" },
     },
@@ -134,9 +139,18 @@ const sampleResult: RunResult = {
     },
     {
       module_id: "inference-perf",
-      status: { status: "skipped", reason: "not available in this build of InferMark" },
-      duration_ms: 0,
-      output: { metrics: [], series: [], notes: [] },
+      status: { status: "completed" },
+      duration_ms: 21000,
+      output: {
+        metrics: [
+          { key: "qwen3-0.6b-q4/gen_tps", label: "Qwen3 0.6B · Generation", value: 44.9, unit: "tok/s", direction: "higher-is-better" },
+          { key: "qwen3-0.6b-q4/prompt_tps", label: "Qwen3 0.6B · Prompt processing", value: 490.7, unit: "tok/s", direction: "higher-is-better" },
+          { key: "qwen3-0.6b-q4/ttft_ms", label: "Qwen3 0.6B · Time to first token", value: 1199, unit: "ms", direction: "lower-is-better" },
+          { key: "qwen3-0.6b-q4/load_s", label: "Qwen3 0.6B · Load time", value: 2.1, unit: "s", direction: "lower-is-better" },
+        ],
+        series: [],
+        notes: ["Engine: llama.cpp b11669 on Intel Iris Xe Graphics (Vulkan)"],
+      },
     },
   ],
 };
@@ -193,7 +207,13 @@ export function startRun(_key: string) {
       progress: { fraction: Math.min(pct, 1), message: `Pass ${Math.round(pct * 4)} of 4` },
     });
     if (pct >= 1) {
-      listeners?.onEvent({ type: "module-finished", record: sampleResult.modules[i] });
+      const record = sampleResult.modules.find((m) => m.module_id === step.module_id) ?? {
+        module_id: step.module_id,
+        status: { status: "skipped" as const, reason: "coming in a future update" },
+        duration_ms: 0,
+        output: { metrics: [], series: [], notes: [] },
+      };
+      listeners?.onEvent({ type: "module-finished", record });
       i += 1;
       pct = 0;
       if (i >= steps.length) {
