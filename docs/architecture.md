@@ -5,7 +5,8 @@ crates/
   infermark-sdk/   Public traits and types. The only crate modules need to depend on.
   hwprobe/         Hardware detection (CPU, GPU via DXGI / sysfs / system_profiler, NVML, NPU, battery).
   models/          Model catalog, GGUF header reader, hardware gate, verified resumable downloader.
-  engine/          Inference backends: llama.cpp (`llama-server` child process) and Ollama (HTTP).
+  engine/          Inference backends: llama.cpp (`llama-server` child process, or in-process with the
+                   `llama-inproc` feature) and Ollama (HTTP).
   telemetry/       Background sensor sampler and per-platform sensor providers.
   core/            Registry, planner, runner, profiles, packs, settings, built-in modules and scorers,
                    JSON Schemas.
@@ -94,6 +95,7 @@ catalog/models.toml ──► hardware gate ──► download (HTTPS, allow-lis
                          │  speed  ≈ measured bandwidth × 0.6 ÷ bytes per token
                          ▼
 inference-perf ──► Backend ──► llama-server on 127.0.0.1 (random port + API key)   [llama-cpp]
+                           ├─► llama.cpp linked in-process (feature llama-inproc)  [llama-cpp-inproc]
                            └─► local Ollama HTTP API                               [ollama]
 ```
 
@@ -101,6 +103,13 @@ llama.cpp runs as the official prebuilt `llama-server` rather than being compile
 That gives every user the right GPU build (Vulkan, CUDA, Metal) without a C++ toolchain, and keeps
 the engine version visible in every result. Builds are pinned in `catalog/engines.toml` and
 installed into the storage folder; a custom `llama-server` can be set in settings.
+
+Phones can't do that: Android 10+ won't execute files from app storage and iOS doesn't allow child
+processes. The `llama-inproc` Cargo feature of `infermark-engine` links llama.cpp into the process
+instead (through `llama-cpp-2`, built from source, so it needs CMake, a C++ compiler and libclang).
+It behaves like the `llama-server` backend: the same prompt layout and default sampler, stop
+strings, `ignore_eos`, a fresh KV cache for every run, and the vendored llama.cpp build in the
+version string. It is off by default; CI builds it on Linux and generates tokens with a 27 MB model.
 
 Every note and error a module produces is passed through `privacy::redact` before it is saved, so
 engine logs can't leak the account name through file paths.

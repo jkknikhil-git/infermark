@@ -3,12 +3,17 @@
 //! | Backend | How it runs models |
 //! | --- | --- |
 //! | [`LlamaServer`] (`llama-cpp`) | Official llama.cpp `llama-server` build, installed by InferMark (pinned + hash-checked) or found on the PATH |
+//! | `LlamaInProcess` (`llama-cpp-inproc`) | llama.cpp linked into the app as a library; needs the `llama-inproc` feature (phones can't run `llama-server`) |
 //! | [`Ollama`] (`ollama`) | Models already installed in a local Ollama |
 
 pub mod engines;
+#[cfg(feature = "llama-inproc")]
+pub mod llama_inproc;
 pub mod llama_server;
 pub mod ollama;
 mod stream;
+#[cfg(any(feature = "llama-inproc", test))]
+mod text;
 
 use std::path::PathBuf;
 
@@ -16,6 +21,8 @@ use infermark_sdk::Backend;
 use serde::Serialize;
 
 pub use engines::{Accel, EngineBuild, EngineCatalog, EngineStore};
+#[cfg(feature = "llama-inproc")]
+pub use llama_inproc::LlamaInProcess;
 pub use llama_server::LlamaServer;
 pub use ollama::{Ollama, OllamaModel};
 
@@ -50,6 +57,10 @@ impl EngineConfig {
 #[serde(rename_all = "kebab-case")]
 pub enum BackendKind {
     LlamaCpp,
+    /// llama.cpp in this process. Always parsed so profiles stay portable; opening it fails
+    /// unless the `llama-inproc` feature is on.
+    #[serde(rename = "llama-cpp-inproc")]
+    LlamaCppInProcess,
     Ollama,
 }
 
@@ -57,6 +68,7 @@ impl BackendKind {
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "llama-cpp" | "llama.cpp" | "llamacpp" => Some(Self::LlamaCpp),
+            "llama-cpp-inproc" | "llama-cpp-in-process" => Some(Self::LlamaCppInProcess),
             "ollama" => Some(Self::Ollama),
             _ => None,
         }
@@ -65,6 +77,7 @@ impl BackendKind {
     pub fn label(self) -> &'static str {
         match self {
             Self::LlamaCpp => "llama.cpp",
+            Self::LlamaCppInProcess => "llama.cpp (in-process)",
             Self::Ollama => "Ollama",
         }
     }
@@ -78,6 +91,13 @@ pub fn open_backend(kind: BackendKind, config: &EngineConfig) -> Result<Box<dyn 
             )?;
             Ok(Box::new(LlamaServer::new(exe)))
         }
+        #[cfg(feature = "llama-inproc")]
+        BackendKind::LlamaCppInProcess => Ok(Box::new(LlamaInProcess::new()?)),
+        #[cfg(not(feature = "llama-inproc"))]
+        BackendKind::LlamaCppInProcess => Err(
+            "this build of InferMark doesn't include in-process llama.cpp (Cargo feature `llama-inproc`)"
+                .into(),
+        ),
         BackendKind::Ollama => {
             if ollama::version(&config.ollama_url).is_none() {
                 return Err(format!("Ollama is not running at {}", config.ollama_url));
@@ -145,5 +165,31 @@ pub(crate) fn http_error(e: ureq::Error) -> String {
             format!("HTTP {code}: {}", msg.trim())
         }
         other => other.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn in_process_kind() {
+        let kind = BackendKind::parse("llama-cpp-inproc");
+        assert_eq!(kind, Some(BackendKind::LlamaCppInProcess));
+        assert_eq!(
+            serde_json::to_value(BackendKind::LlamaCppInProcess).unwrap(),
+            "llama-cpp-inproc"
+        );
+        let config = EngineConfig {
+            llama_server: None,
+            engines_dir: PathBuf::from("no-engines-here"),
+            ollama_url: "http://127.0.0.1:9".into(),
+        };
+        let opened = open_backend(BackendKind::LlamaCppInProcess, &config);
+        if cfg!(feature = "llama-inproc") {
+            assert_eq!(opened.unwrap().id(), "llama-cpp-inproc");
+        } else {
+            assert!(opened.err().unwrap().contains("llama-inproc"));
+        }
     }
 }

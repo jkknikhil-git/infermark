@@ -1,6 +1,6 @@
 [package]
 name = "infermark-engine"
-description = "InferMark inference backends: llama.cpp (llama-server) and Ollama"
+description = "InferMark inference backends: llama.cpp (llama-server or in-process) and Ollama"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,6 +17,18 @@ serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
 ureq.workspace = true
+
+# In-process llama.cpp (`llama-inproc`). Pinned exactly: `LLAMA_CPP_BUILD` in
+# src/llama_inproc.rs names the llama.cpp release this version vendors. Building it needs
+# CMake, a C++ compiler and libclang, so it is off by default.
+llama-cpp-2 = { version = "=0.1.160", default-features = false, features = ["openmp"], optional = true }
+llama-cpp-sys-2 = { version = "=0.1.160", default-features = false, optional = true }
+sysinfo = { workspace = true, optional = true }
+
+[features]
+default = []
+# llama.cpp linked into the process instead of run as `llama-server` (needed on phones).
+llama-inproc = ["dep:llama-cpp-2", "dep:llama-cpp-sys-2", "dep:sysinfo"]
 
 [dev-dependencies]
 tempfile.workspace = true

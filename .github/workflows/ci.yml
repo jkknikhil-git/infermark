@@ -41,6 +41,45 @@ jobs:
           cargo run -q -p infermark-cli -- schema export --dir schema
           git diff --exit-code schema/
 
+  # llama.cpp linked into the process (feature `llama-inproc`), the engine phones will use.
+  # Builds llama.cpp from source and generates a few tokens with a tiny model.
+  llama-inproc:
+    name: In-process llama.cpp (ubuntu-latest)
+    runs-on: ubuntu-latest
+    env:
+      # TinyStories 15M (llama.cpp's own test model), pinned to a revision and hash-checked.
+      TEST_GGUF_URL: https://huggingface.co/ggml-org/models/resolve/499bc8821c6b12b4e53c5bffcb21ec206f212d81/tinyllamas/stories15M-q8_0.gguf
+      TEST_GGUF_SHA256: 2eda49203f2f044f3dddf29a7dd7cc861ef5a0340f518a19613d73ba6d9c06b6
+      INFERMARK_TEST_GGUF: ${{ github.workspace }}/.test-models/stories15M-q8_0.gguf
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build dependencies (CMake is preinstalled; bindgen needs libclang)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev
+          cmake --version
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: llama-inproc
+      - uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.test-models
+          key: test-gguf-${{ env.TEST_GGUF_SHA256 }}
+      - name: Download test model
+        run: |
+          if [ ! -f "$INFERMARK_TEST_GGUF" ]; then
+            mkdir -p "$(dirname "$INFERMARK_TEST_GGUF")"
+            curl -fsSL --retry 3 -o "$INFERMARK_TEST_GGUF" "$TEST_GGUF_URL"
+          fi
+          echo "$TEST_GGUF_SHA256  $INFERMARK_TEST_GGUF" | sha256sum -c -
+      - name: Clippy
+        run: cargo clippy --all-targets --features infermark-engine/llama-inproc -- -D warnings
+      - name: Test
+        run: cargo test -p infermark-engine --features llama-inproc -- --nocapture
+
   desktop:
     name: Desktop app (${{ matrix.os }})
     strategy:
