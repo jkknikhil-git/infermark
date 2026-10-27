@@ -121,13 +121,18 @@ fn parse_devices(text: &str) -> Vec<String> {
                 return None;
             }
             let name = rest.split(" (").next().unwrap_or(rest);
-            let name = name.replace("(R)", "").replace("(TM)", "");
-            Some(format!(
-                "{} ({base})",
-                name.split_whitespace().collect::<Vec<_>>().join(" ")
-            ))
+            Some(device_label(name, base))
         })
         .collect()
+}
+
+/// `Intel(R) Iris(R) Xe Graphics`, `Vulkan` → `Intel Iris Xe Graphics (Vulkan)`.
+pub(crate) fn device_label(name: &str, api: &str) -> String {
+    let name = name.replace("(R)", "").replace("(TM)", "");
+    format!(
+        "{} ({api})",
+        name.split_whitespace().collect::<Vec<_>>().join(" ")
+    )
 }
 
 fn run_for_output(exe: &Path, arg: &str) -> Option<String> {

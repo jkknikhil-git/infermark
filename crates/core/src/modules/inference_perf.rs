@@ -78,7 +78,9 @@ impl BenchModule for InferencePerf {
         let mut out = ModuleOutput::default();
         let kind = choose_backend(&ctx.run.backend, &config, &settings.models_dir(), ctx)?;
         let mut candidates = match kind {
-            BackendKind::LlamaCpp => gguf_candidates(ctx, &settings.models_dir(), &mut out.notes),
+            BackendKind::LlamaCpp | BackendKind::LlamaCppInProcess => {
+                gguf_candidates(ctx, &settings.models_dir(), &mut out.notes)
+            }
             BackendKind::Ollama => ollama_candidates(ctx, &config, &mut out.notes),
         };
 
@@ -122,7 +124,7 @@ impl BenchModule for InferencePerf {
         }
         if candidates.is_empty() {
             return Err(ModuleError::Skipped(match kind {
-                BackendKind::LlamaCpp => {
+                BackendKind::LlamaCpp | BackendKind::LlamaCppInProcess => {
                     "no downloaded models fit this profile. Download one on the Models page.".into()
                 }
                 BackendKind::Ollama => "no Ollama models fit this profile".into(),
@@ -174,7 +176,9 @@ fn choose_backend(
     if setting != "auto" {
         return Err(ModuleError::InvalidSetting {
             key: "run.backend".into(),
-            message: format!("unknown backend `{setting}` (use auto, llama-cpp or ollama)"),
+            message: format!(
+                "unknown backend `{setting}` (use auto, llama-cpp, llama-cpp-inproc or ollama)"
+            ),
         });
     }
     let has_gguf = !gguf_candidates(ctx, models_dir, &mut Vec::new()).is_empty();
