@@ -129,9 +129,11 @@ const sensors: SensorInventory = {
   ],
   missing: [
     ch("cpu", "temperature", "CPU temperature"),
+    ch("cpu", "power", "CPU package power"),
     ch("gpu", "utilization", "GPU load"),
     ch("gpu", "temperature", "GPU temperature"),
     ch("gpu", "power", "GPU power"),
+    ch("battery", "temperature", "Battery temperature"),
     ch("device", "thermal-state", "Thermal state"),
   ],
 };
