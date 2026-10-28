@@ -95,12 +95,28 @@ export function plan(_key: string): PlanEntry[] {
       status: { status: "planned" },
     },
     {
+      module_id: "sustained-load",
+      descriptor: descriptor("sustained-load", "Endurance", "Keeps a model writing for several minutes to see whether speed holds up as the device heats up.", 300),
+      status: { status: "planned" },
+    },
+    {
+      module_id: "battery-drain",
+      descriptor: descriptor("battery-drain", "Battery", "Runs a model on battery power to measure the charge it uses.", 600),
+      status: { status: "skipped", reason: "unplug the charger to run battery tests" },
+    },
+    {
       module_id: "quality-packs",
       descriptor: null,
       status: { status: "skipped", reason: "not available in this build of InferMark" },
     },
   ];
 }
+
+/** Five minutes of generation on a laptop that slows from 44 to about 38 tok/s as it warms up. */
+const sustainedSpeeds: [number, number][] = Array.from({ length: 100 }, (_, i) => {
+  const t = 4 + i * 3;
+  return [t, Math.round((38 + 6 * Math.exp(-t / 70) + Math.sin(i) * 0.4) * 100) / 100];
+});
 
 // What this preview "device" can measure: like a Windows laptop with an Intel iGPU.
 const ch = (source: string, kind: SensorReading["kind"], label: string) => ({ source, kind, label });
@@ -125,7 +141,7 @@ function readingsAt(t: number): SensorReading[] {
   const busy = t > 6;
   return [
     { source: "cpu", kind: "utilization", value: t === 0 ? null : Math.round((busy ? 62 : 18) + Math.sin(t / 3) * 9) },
-    { source: "cpu", kind: "clock", value: Math.round((busy ? 2950 : 2400) - Math.min(t, 120) * 2 + Math.cos(t / 2) * 60) },
+    { source: "cpu", kind: "clock", value: Math.round((busy ? 2950 : 2400) - Math.min(t, 240) * 2 + Math.cos(t / 2) * 60) },
     { source: "battery", kind: "battery-charge", value: Math.min(82 + t * 0.01, 100) },
     { source: "battery", kind: "power", value: null },
   ];
@@ -160,11 +176,12 @@ const sampleResult: RunResult = {
   hardware,
   profile: profiles[0].profile,
   plan: plan("quick"),
-  telemetry: telemetryFor(28),
+  telemetry: telemetryFor(330),
   modules: [
     {
       module_id: "system-probe",
       status: { status: "completed" },
+      offset_ms: 0,
       duration_ms: 40,
       output: {
         metrics: [
@@ -179,6 +196,7 @@ const sampleResult: RunResult = {
     {
       module_id: "memory-bandwidth",
       status: { status: "completed" },
+      offset_ms: 40,
       duration_ms: 6200,
       output: {
         metrics: [
@@ -192,6 +210,7 @@ const sampleResult: RunResult = {
     {
       module_id: "inference-perf",
       status: { status: "completed" },
+      offset_ms: 6240,
       duration_ms: 21000,
       output: {
         metrics: [
@@ -203,6 +222,32 @@ const sampleResult: RunResult = {
         series: [],
         notes: ["Engine: llama.cpp b11669 on Intel Iris Xe Graphics (Vulkan)"],
       },
+    },
+    {
+      module_id: "sustained-load",
+      status: { status: "completed" },
+      offset_ms: 27240,
+      duration_ms: 302000,
+      output: {
+        metrics: [
+          { key: "stability_pct", label: "Stability", value: 86.6, unit: "%", direction: "higher-is-better" },
+          { key: "throttle_pct", label: "Throttling", value: 13.4, unit: "%", direction: "lower-is-better" },
+          { key: "peak_tps", label: "Peak speed", value: 44.1, unit: "tok/s", direction: "higher-is-better" },
+          { key: "sustained_tps", label: "Sustained speed", value: 38.2, unit: "tok/s", direction: "higher-is-better" },
+          { key: "burst_tps", label: "Burst speed (short test)", value: 44.9, unit: "tok/s", direction: "higher-is-better" },
+          { key: "loops", label: "Generations", value: 100, unit: "", direction: "neutral" },
+          { key: "tokens", label: "Tokens written", value: 12800, unit: "", direction: "neutral" },
+        ],
+        series: [{ key: "tps", label: "Speed over time", x_unit: "s", y_unit: "tok/s", points: sustainedSpeeds }],
+        notes: ["Qwen3 0.6B: 100 generations over 5.1 min, peak 44.1 tok/s, last quarter 38.2 tok/s."],
+      },
+    },
+    {
+      module_id: "battery-drain",
+      status: { status: "skipped", reason: "unplug the charger to run battery tests" },
+      offset_ms: 329240,
+      duration_ms: 0,
+      output: { metrics: [], series: [], notes: [] },
     },
   ],
 };

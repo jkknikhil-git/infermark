@@ -8,31 +8,16 @@
 //! Each model gets warm-up runs, then `run.repeats` measured runs; results are medians.
 //! Every prompt starts with a different session number so no backend can serve it from cache.
 
-use std::path::{Path, PathBuf};
-
-use infermark_engine::{open_backend, BackendKind, EngineConfig};
-use infermark_models::{assess, gguf, Catalog, ModelShape, ModelStore, Verdict};
 use infermark_sdk::{
-    Backend, BenchModule, Direction, GenerateRequest, GenerationStats, LiveValue, LoadOptions,
-    Metric, ModelSpec, ModuleCategory, ModuleDescriptor, ModuleError, ModuleOutput, RunContext,
-    Series,
+    Backend, BenchModule, Direction, GenerationStats, LiveValue, LoadOptions, Metric,
+    ModuleCategory, ModuleDescriptor, ModuleError, ModuleOutput, RunContext, Series,
 };
 
-use crate::settings;
+use super::model_run::{
+    context_for, load_options, median, open, request, round, select_models, Candidate,
+};
 
 pub struct InferencePerf;
-
-/// A model this run could benchmark.
-#[derive(Debug, Clone)]
-struct Candidate {
-    /// Catalog id, file stem or Ollama tag; used as the metric key prefix.
-    key: String,
-    name: String,
-    params_b: Option<f64>,
-    spec: ModelSpec,
-    /// File size and shape, when known, for the hardware gate.
-    gate_input: Option<(u64, ModelShape)>,
-}
 
 #[derive(Debug, Clone, Copy)]
 struct Plan {
@@ -59,82 +44,21 @@ impl BenchModule for InferencePerf {
 
     /// Settings: `max_models` (default 3), `prompt_tokens` (512), `gen_tokens` (128).
     fn run(&self, ctx: &RunContext<'_>) -> Result<ModuleOutput, ModuleError> {
-        let settings = settings::load_or_default();
-        let config = settings.engine_config();
+        let prompt_tokens = ctx.setting_u64("prompt_tokens", 512).clamp(16, 32768) as u32;
+        let gen_tokens = ctx.setting_u64("gen_tokens", 128).clamp(8, 4096) as u32;
         let plan = Plan {
-            prompt_tokens: ctx.setting_u64("prompt_tokens", 512).clamp(16, 32768) as u32,
-            gen_tokens: ctx.setting_u64("gen_tokens", 128).clamp(8, 4096) as u32,
-            context: 0,
+            prompt_tokens,
+            gen_tokens,
+            context: context_for(prompt_tokens, gen_tokens),
             warmups: ctx.run.warmups,
             repeats: ctx.run.repeats.max(1),
-        };
-        let plan = Plan {
-            context: (plan.prompt_tokens + plan.gen_tokens + 128)
-                .next_power_of_two()
-                .max(1024),
-            ..plan
         };
         let max_models = ctx.setting_u64("max_models", 3).max(1) as usize;
 
         let mut out = ModuleOutput::default();
-        let kind = choose_backend(&ctx.run.backend, &config, &settings.models_dir(), ctx)?;
-        let mut candidates = match kind {
-            BackendKind::LlamaCpp | BackendKind::LlamaCppInProcess => {
-                gguf_candidates(ctx, &settings.models_dir(), &mut out.notes)
-            }
-            BackendKind::Ollama => ollama_candidates(ctx, &config, &mut out.notes),
-        };
-
-        // Hardware gate.
-        // The better of copy and triad: a single noisy pass shouldn't make the gate pessimistic.
-        let bandwidth = ["copy_gbps", "triad_gbps"]
-            .iter()
-            .filter_map(|k| ctx.earlier_metric("memory-bandwidth", k))
-            .reduce(f64::max);
-        candidates.retain(|c| {
-            let Some((bytes, shape)) = &c.gate_input else {
-                return true;
-            };
-            let v: Verdict = assess(
-                *bytes,
-                shape,
-                plan.context,
-                ctx.hardware,
-                &ctx.profile.gate,
-                bandwidth,
-            );
-            if v.runnable(&ctx.profile.gate) {
-                true
-            } else {
-                out.notes
-                    .push(format!("Skipped {}: {}.", c.name, v.summary));
-                false
-            }
-        });
-        candidates.sort_by(|a, b| {
-            a.params_b
-                .unwrap_or(f64::MAX)
-                .total_cmp(&b.params_b.unwrap_or(f64::MAX))
-        });
-        if candidates.len() > max_models {
-            let rest: Vec<_> = candidates.drain(max_models..).map(|c| c.name).collect();
-            out.notes.push(format!(
-                "Tested the {max_models} smallest model(s); not tested this time: {}.",
-                rest.join(", ")
-            ));
-        }
-        if candidates.is_empty() {
-            return Err(ModuleError::Skipped(match kind {
-                BackendKind::LlamaCpp | BackendKind::LlamaCppInProcess => {
-                    "no downloaded models fit this profile. Download one on the Models page.".into()
-                }
-                BackendKind::Ollama => "no Ollama models fit this profile".into(),
-            }));
-        }
-
-        let mut backend = open_backend(kind, &config).map_err(ModuleError::Failed)?;
-        out.notes
-            .insert(0, format!("Engine: {} {}", kind.label(), backend.version()));
+        let sel = select_models(ctx, max_models, plan.context, &mut out.notes)?;
+        let mut backend = open(&sel, &mut out.notes)?;
+        let candidates = sel.candidates;
 
         let total = candidates.len();
         let mut failures = Vec::new();
@@ -147,12 +71,7 @@ impl BenchModule for InferencePerf {
                     None => ctx.report(fraction, msg),
                 }
             };
-            let options = LoadOptions {
-                context_size: plan.context,
-                threads: ctx.run.threads,
-                gpu_layers: ctx.run.gpu_layers,
-                seed: ctx.run.seed,
-            };
+            let options = load_options(ctx, plan.context);
             match measure(backend.as_mut(), c, &options, plan, ctx, &report) {
                 Ok(samples) => push_results(&mut out, c, &samples),
                 Err(ModuleError::Cancelled) => return Err(ModuleError::Cancelled),
@@ -167,178 +86,6 @@ impl BenchModule for InferencePerf {
         }
         Ok(out)
     }
-}
-
-/// `auto` prefers llama.cpp when it is installed and has a model to run, then Ollama.
-fn choose_backend(
-    setting: &str,
-    config: &EngineConfig,
-    models_dir: &Path,
-    ctx: &RunContext<'_>,
-) -> Result<BackendKind, ModuleError> {
-    if let Some(kind) = BackendKind::parse(setting) {
-        return Ok(kind);
-    }
-    if setting != "auto" {
-        return Err(ModuleError::InvalidSetting {
-            key: "run.backend".into(),
-            message: format!(
-                "unknown backend `{setting}` (use auto, llama-cpp, llama-cpp-inproc or ollama)"
-            ),
-        });
-    }
-    let has_gguf = !gguf_candidates(ctx, models_dir, &mut Vec::new()).is_empty();
-    if config.llama_server().is_some() && has_gguf {
-        return Ok(BackendKind::LlamaCpp);
-    }
-    if infermark_engine::ollama::version(&config.ollama_url).is_some() {
-        return Ok(BackendKind::Ollama);
-    }
-    Err(ModuleError::Skipped(if has_gguf {
-        "llama.cpp is not installed yet. Install it on the Models page.".into()
-    } else {
-        "no models downloaded yet. Download one on the Models page.".into()
-    }))
-}
-
-/// Downloaded catalog models plus the profile's local `.gguf` files.
-fn gguf_candidates(
-    ctx: &RunContext<'_>,
-    models_dir: &Path,
-    notes: &mut Vec<String>,
-) -> Vec<Candidate> {
-    let sel = &ctx.profile.models;
-    let catalog = Catalog::builtin();
-    let store = ModelStore::new(models_dir);
-    let mut out: Vec<Candidate> = catalog
-        .models
-        .iter()
-        .filter(|m| sel.catalog.is_empty() || sel.catalog.contains(&m.id))
-        .filter(|m| sel.max_params_b.map_or(true, |max| m.params_b <= max))
-        .filter(|m| store.is_installed(m))
-        .map(|m| Candidate {
-            key: m.id.clone(),
-            name: m.name.clone(),
-            params_b: Some(m.params_b),
-            spec: ModelSpec {
-                id: m.id.clone(),
-                location: store.path(m).to_string_lossy().into_owned(),
-                sha256: Some(m.sha256.clone()),
-            },
-            gate_input: Some((m.size_bytes, m.shape)),
-        })
-        .collect();
-    for raw in &sel.local_paths {
-        let path = PathBuf::from(raw);
-        let header = gguf::read_file(&path);
-        let shape = header.as_ref().ok().and_then(|h| h.shape().ok());
-        match (std::fs::metadata(&path), header) {
-            (Ok(meta), Ok(h)) => {
-                let stem = path
-                    .file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned();
-                out.push(Candidate {
-                    key: stem.to_lowercase(),
-                    name: h.name().map(String::from).unwrap_or(stem),
-                    params_b: None,
-                    spec: ModelSpec {
-                        id: path
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .into_owned(),
-                        location: raw.clone(),
-                        sha256: None,
-                    },
-                    gate_input: shape.map(|s| (meta.len(), s)),
-                });
-            }
-            (Err(e), _) => notes.push(format!("Skipped local model {}: {e}", file_label(&path))),
-            (_, Err(e)) => notes.push(format!("Skipped local model {}: {e}", file_label(&path))),
-        }
-    }
-    out
-}
-
-/// Just the file name: results never contain local folders.
-fn file_label(path: &Path) -> String {
-    path.file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned()
-}
-
-/// Profile `ollama` tags, plus catalog models whose Ollama tag is installed.
-fn ollama_candidates(
-    ctx: &RunContext<'_>,
-    config: &EngineConfig,
-    notes: &mut Vec<String>,
-) -> Vec<Candidate> {
-    let installed = match infermark_engine::ollama::list_models(&config.ollama_url) {
-        Ok(m) => m,
-        Err(e) => {
-            notes.push(format!("Could not list Ollama models: {e}"));
-            return vec![];
-        }
-    };
-    let sel = &ctx.profile.models;
-    let catalog = Catalog::builtin();
-    let mut out = Vec::new();
-    for m in &installed {
-        let entry = catalog.models.iter().find(|c| {
-            c.ollama.as_deref() == Some(m.name.as_str())
-                || c.ollama.as_deref().map(|t| format!("{t}:latest")) == Some(m.name.clone())
-        });
-        let wanted = sel.ollama.contains(&m.name)
-            || entry.is_some_and(|e| {
-                (sel.catalog.is_empty() || sel.catalog.contains(&e.id))
-                    && sel.max_params_b.map_or(true, |max| e.params_b <= max)
-            });
-        if !wanted {
-            continue;
-        }
-        out.push(Candidate {
-            key: m.name.replace(':', "-"),
-            name: entry
-                .map(|e| e.name.clone())
-                .unwrap_or_else(|| m.name.clone()),
-            params_b: entry.map(|e| e.params_b),
-            spec: ModelSpec {
-                id: m.name.clone(),
-                location: m.name.clone(),
-                sha256: None,
-            },
-            gate_input: entry.map(|e| (m.size_bytes.max(e.size_bytes / 2), e.shape)),
-        });
-    }
-    for tag in &sel.ollama {
-        if !installed.iter().any(|m| &m.name == tag) {
-            notes.push(format!(
-                "Skipped {tag}: not installed in Ollama (ollama pull {tag})."
-            ));
-        }
-    }
-    out
-}
-
-/// A prompt of roughly `tokens` tokens. Deterministic, except for the session number at the
-/// very start, which defeats prompt caches.
-fn perf_prompt(tokens: u32, session: u32) -> String {
-    const TEXT: &str = "The harbour town woke slowly. Fishing boats rocked against the pier while \
-        gulls argued over scraps, and the baker on the corner pulled the first loaves from a brick \
-        oven older than anyone could remember. Up the hill, the lighthouse keeper logged the \
-        weather in a notebook full of careful handwriting: wind from the west, light rain, \
-        visibility fair. Children ran past the market stalls on their way to school, and the \
-        ferry sounded its horn twice before leaving for the islands. ";
-    let target_chars = (tokens as usize).saturating_sub(16) * 4;
-    let mut prompt = format!("Session {session}. Read this passage.\n\n");
-    while prompt.len() < target_chars {
-        prompt.push_str(TEXT);
-    }
-    prompt.push_str("\n\nNow continue the story in your own words:\n");
-    prompt
 }
 
 fn measure(
@@ -403,18 +150,6 @@ fn measure(
     result.map(|_| samples)
 }
 
-fn request(prompt_tokens: u32, gen_tokens: u32, session: u32) -> GenerateRequest {
-    GenerateRequest {
-        system: None,
-        prompt: perf_prompt(prompt_tokens, session),
-        max_tokens: gen_tokens,
-        temperature: 0.0,
-        stop: vec![],
-        think: false,
-        ignore_eos: true,
-    }
-}
-
 fn push_results(out: &mut ModuleOutput, c: &Candidate, samples: &[GenerationStats]) {
     let pick =
         |f: &dyn Fn(&GenerationStats) -> f64| -> Vec<f64> { samples.iter().map(f).collect() };
@@ -476,120 +211,16 @@ fn push_results(out: &mut ModuleOutput, c: &Candidate, samples: &[GenerationStat
     ));
 }
 
-fn median(values: &[f64]) -> f64 {
-    if values.is_empty() {
-        return 0.0;
-    }
-    let mut v = values.to_vec();
-    v.sort_by(f64::total_cmp);
-    let mid = v.len() / 2;
-    if v.len() % 2 == 0 {
-        (v[mid - 1] + v[mid]) / 2.0
-    } else {
-        v[mid]
-    }
-}
-
-fn round(v: f64, digits: i32) -> f64 {
-    let p = 10f64.powi(digits);
-    (v * p).round() / p
-}
-
 #[cfg(test)]
 mod tests {
+    use super::super::model_run::testing::{candidate, FakeBackend, Harness};
     use super::*;
-    use infermark_sdk::{Profile, SensorSnapshot, TokenEvent};
-    use std::sync::atomic::AtomicBool;
-
-    /// Pretends to be an engine: 100 tok/s prompt, 20 tok/s generation.
-    struct FakeBackend {
-        loaded: bool,
-        calls: u32,
-    }
-
-    impl Backend for FakeBackend {
-        fn id(&self) -> &'static str {
-            "fake"
-        }
-        fn version(&self) -> String {
-            "1".into()
-        }
-        fn load(&mut self, _: &ModelSpec, _: &LoadOptions) -> Result<(), String> {
-            self.loaded = true;
-            Ok(())
-        }
-        fn generate(
-            &mut self,
-            req: &GenerateRequest,
-            on: &mut dyn FnMut(TokenEvent),
-        ) -> Result<GenerationStats, String> {
-            assert!(self.loaded);
-            self.calls += 1;
-            on(TokenEvent {
-                text: "x".into(),
-                thinking: false,
-            });
-            let prompt_tokens = (req.prompt.len() / 4) as u32;
-            Ok(GenerationStats {
-                prompt_tokens,
-                output_tokens: req.max_tokens,
-                load_ms: 1500.0,
-                prompt_eval_ms: prompt_tokens as f64 * 10.0,
-                generation_ms: req.max_tokens as f64 * 50.0,
-                time_to_first_token_ms: 300.0 + self.calls as f64,
-                ..Default::default()
-            })
-        }
-        fn unload(&mut self) {
-            self.loaded = false;
-        }
-    }
-
-    #[test]
-    fn prompt_has_roughly_the_requested_length_and_varies_by_session() {
-        let p = perf_prompt(512, 1);
-        let approx_tokens = p.len() / 4;
-        assert!((480..640).contains(&approx_tokens), "{approx_tokens}");
-        assert_ne!(perf_prompt(512, 1), perf_prompt(512, 2));
-        assert_eq!(perf_prompt(512, 3), perf_prompt(512, 3));
-    }
-
-    #[test]
-    fn median_works() {
-        assert_eq!(median(&[3.0, 1.0, 2.0]), 2.0);
-        assert_eq!(median(&[4.0, 1.0, 2.0, 3.0]), 2.5);
-        assert_eq!(median(&[]), 0.0);
-    }
 
     #[test]
     fn measures_and_reports_medians() {
-        let hw = infermark_hwprobe_stub();
-        let profile =
-            Profile::from_toml("schema = 1\nname = \"t\"\n[run]\nrepeats = 3\nwarmups = 1\n")
-                .unwrap();
-        let settings = toml::Table::new();
-        let cancel = AtomicBool::new(false);
-        let ctx = RunContext {
-            hardware: &hw,
-            settings: &settings,
-            run: &profile.run,
-            profile: &profile,
-            earlier: &[],
-            progress: &|_| {},
-            cancel: &cancel,
-            sensors: &SensorSnapshot::default(),
-        };
-        let c = Candidate {
-            key: "fake-1b".into(),
-            name: "Fake 1B".into(),
-            params_b: Some(1.0),
-            spec: ModelSpec {
-                id: "fake".into(),
-                location: "fake.gguf".into(),
-                sha256: None,
-            },
-            gate_input: None,
-        };
+        let h = Harness::new("[run]\nrepeats = 3\nwarmups = 1\n");
+        let ctx = h.ctx();
+        let c = candidate();
         let plan = Plan {
             prompt_tokens: 512,
             gen_tokens: 128,
@@ -597,10 +228,7 @@ mod tests {
             warmups: 1,
             repeats: 3,
         };
-        let mut backend = FakeBackend {
-            loaded: false,
-            calls: 0,
-        };
+        let mut backend = FakeBackend::new(|_| 20.0);
         let samples = measure(
             &mut backend,
             &c,
@@ -625,32 +253,37 @@ mod tests {
     }
 
     #[test]
+    fn reports_each_measured_run_live() {
+        let h = Harness::new("");
+        let ctx = h.ctx();
+        let plan = Plan {
+            prompt_tokens: 64,
+            gen_tokens: 8,
+            context: 1024,
+            warmups: 0,
+            repeats: 2,
+        };
+        let live = std::sync::Mutex::new(Vec::new());
+        measure(
+            &mut FakeBackend::new(|_| 25.0),
+            &candidate(),
+            &LoadOptions::default(),
+            plan,
+            &ctx,
+            &|_, _, v| live.lock().unwrap().extend(v),
+        )
+        .unwrap();
+        let live = live.into_inner().unwrap();
+        assert_eq!(live.len(), 2);
+        assert_eq!(live[0].value, 25.0);
+        assert_eq!(live[0].label, "Fake 1B · Generation");
+    }
+
+    #[test]
     fn cancel_stops_between_runs() {
-        let hw = infermark_hwprobe_stub();
-        let profile = Profile::from_toml("schema = 1\nname = \"t\"\n").unwrap();
-        let settings = toml::Table::new();
-        let cancel = AtomicBool::new(true);
-        let ctx = RunContext {
-            hardware: &hw,
-            settings: &settings,
-            run: &profile.run,
-            profile: &profile,
-            earlier: &[],
-            progress: &|_| {},
-            cancel: &cancel,
-            sensors: &SensorSnapshot::default(),
-        };
-        let c = Candidate {
-            key: "k".into(),
-            name: "n".into(),
-            params_b: None,
-            spec: ModelSpec {
-                id: "x".into(),
-                location: "x".into(),
-                sha256: None,
-            },
-            gate_input: None,
-        };
+        let h = Harness::new("");
+        h.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        let ctx = h.ctx();
         let plan = Plan {
             prompt_tokens: 64,
             gen_tokens: 8,
@@ -658,13 +291,10 @@ mod tests {
             warmups: 1,
             repeats: 2,
         };
-        let mut backend = FakeBackend {
-            loaded: false,
-            calls: 0,
-        };
+        let mut backend = FakeBackend::new(|_| 20.0);
         let err = measure(
             &mut backend,
-            &c,
+            &candidate(),
             &LoadOptions::default(),
             plan,
             &ctx,
@@ -674,16 +304,5 @@ mod tests {
         assert!(matches!(err, ModuleError::Cancelled));
         assert_eq!(backend.calls, 0);
         assert!(!backend.loaded);
-    }
-
-    fn infermark_hwprobe_stub() -> infermark_sdk::HardwareInfo {
-        serde_json::from_value(serde_json::json!({
-            "fingerprint": "t",
-            "os": {"family": "windows", "name": "W", "version": "11", "kernel": "", "arch": "x86_64"},
-            "cpu": {"brand": "c", "vendor": "", "physical_cores": 4, "logical_cores": 8, "frequency_mhz": null},
-            "memory": {"total_bytes": 17179869184u64, "available_bytes": 8589934592u64},
-            "gpus": [], "npus": [], "battery": null, "power_source": "ac"
-        }))
-        .unwrap()
     }
 }

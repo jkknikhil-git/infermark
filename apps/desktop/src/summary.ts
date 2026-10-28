@@ -2,6 +2,7 @@
 // Speed and Responsiveness, each with a headline number and the per-model details.
 
 import type { Metric, ModuleRecord, RunResult } from "./api";
+import { sensorCharts } from "./sensor-charts";
 
 export type CategoryId = "speed" | "responsiveness" | "endurance" | "efficiency" | "quality";
 
@@ -75,6 +76,16 @@ export interface CategoryView {
   headline: string | null;
   /** Why nothing was measured (skipped reason, not in this profile, coming later). */
   missing: string | null;
+  /** Curves worth seeing next to the numbers (speed over time, temperature, charge). */
+  charts: CategoryChart[];
+}
+
+export interface CategoryChart {
+  title: string;
+  unit: string;
+  points: [number, number][];
+  zero: boolean;
+  minSpan: number;
 }
 
 /** Metrics like `qwen3-0.6b-q4/gen_tps` labelled "Qwen3 0.6B · Generation" are grouped by model. */
@@ -107,6 +118,25 @@ function headlineFor(category: CategoryId, groups: MetricGroup[]): string | null
   };
   if (category === "speed") return pick("gen_tps", "max") ?? `${formatNumber(all[0].value)} ${all[0].unit} · ${all[0].label}`;
   if (category === "responsiveness") return pick("ttft_ms", "min");
+  const value = (key: string) => all.find((m) => m.key === key)?.value;
+  if (category === "endurance") {
+    const stability = value("stability_pct");
+    const peak = value("peak_tps");
+    const sustained = value("sustained_tps");
+    if (stability !== undefined && peak !== undefined && sustained !== undefined)
+      return `${formatNumber(stability)}% stability · ${formatNumber(peak)} → ${formatNumber(sustained)} tok/s`;
+  }
+  if (category === "efficiency") {
+    const hours = value("hours_nonstop");
+    const per10k = value("pct_per_10k_tokens");
+    const parts = [
+      hours !== undefined ? `${formatNumber(hours)} h nonstop` : null,
+      per10k !== undefined ? `${formatNumber(per10k)}% per 10k tokens` : null,
+    ].filter(Boolean);
+    if (parts.length > 0) return parts.join(" · ");
+    const used = value("charge_used_pct");
+    if (used !== undefined) return `${formatNumber(used)}% charge used`;
+  }
   return `${formatNumber(all[0].value)} ${all[0].unit} · ${all[0].label}`;
 }
 
@@ -134,8 +164,44 @@ export function categorize(result: RunResult): CategoryView[] {
       missing = reasons[0] ?? "not part of this profile";
       if (/not available in this build/.test(missing)) missing = "coming in a future update";
     }
-    return { def, groups, headline: headlineFor(def.id, groups), missing };
+    return { def, groups, headline: headlineFor(def.id, groups), missing, charts: chartsFor(def.id, records, result) };
   });
+}
+
+/** Sensor kinds drawn under each category, first available wins (one y-axis per chart). */
+const CATEGORY_SENSORS: Partial<Record<CategoryId, string[][]>> = {
+  // Temperature where the device reports it; otherwise clock speed, which also shows throttling.
+  endurance: [["cpu.temperature", "gpu0.temperature", "device.thermal-state", "cpu.clock"]],
+  efficiency: [["battery.power"]],
+};
+
+function chartsFor(category: CategoryId, records: ModuleRecord[], result: RunResult): CategoryChart[] {
+  const record = records.find((r) => r.status.status === "completed" && r.output.series.length > 0);
+  if (!record) return [];
+  const charts: CategoryChart[] = record.output.series.map((s) => ({
+    title: s.label,
+    unit: s.y_unit,
+    points: s.points,
+    zero: s.y_unit === "tok/s",
+    minSpan: s.y_unit === "%" ? 5 : 0,
+  }));
+  // The run's sensors during this module only, on the module's own clock.
+  const telemetry = result.telemetry;
+  if (!telemetry || record.offset_ms === undefined) return charts;
+  const from = record.offset_ms / 1000;
+  const to = from + record.duration_ms / 1000;
+  const specs = new Map(sensorCharts(telemetry.sensors).map((c) => [c.key, c]));
+  for (const keys of CATEGORY_SENSORS[category] ?? []) {
+    for (const key of keys) {
+      const series = telemetry.series.find((s) => s.key === key);
+      const spec = specs.get(key);
+      const points = series?.points.filter(([t]) => t >= from && t <= to).map(([t, v]) => [t - from, v] as [number, number]);
+      if (!series || !spec || !points || points.length < 2) continue;
+      charts.push({ title: spec.title, unit: spec.unit, points, zero: spec.zero, minSpan: spec.minSpan });
+      break;
+    }
+  }
+  return charts;
 }
 
 /** One line for the home screen, e.g. "Qwen3 0.6B writes 44.9 tokens per second". */

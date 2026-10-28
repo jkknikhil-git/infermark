@@ -173,6 +173,13 @@ function CategoryRow({ view }: { view: CategoryView }) {
       {measured && (
         <div className="category-body">
           <p className="body-small muted">{view.def.blurb}</p>
+          {view.charts.length > 0 && (
+            <div className="grid charts">
+              {view.charts.map((c) => (
+                <LineChart key={c.title} title={c.title} unit={c.unit} points={c.points} zero={c.zero} minSpan={c.minSpan} table />
+              ))}
+            </div>
+          )}
           {view.groups.map((g) => (
             <div key={g.title} className="metric-group">
               <h3 className="title-small">{g.title}</h3>

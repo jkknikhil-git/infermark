@@ -150,3 +150,34 @@ phone's providers later. Each `ModuleRecord` also stores `offset_ms`, which line
 with the run's telemetry. In the app, charts have one series and one y-axis each, a sensor that
 exists but can't be read says so instead of drawing zeros, and the standard sensors a device
 lacks are listed under the charts.
+
+## Burst, sustained and battery
+
+Here's the thing about a quick benchmark: it catches your device at its coolest. That's the
+number on the box, not the one you get 20 minutes into a long chat. So InferMark measures both,
+the same way phone stress tests do.
+
+- **Burst** is `inference-perf`: a warm-up, then a few short runs, and the median.
+- **Sustained** is `sustained-load`: one model generating back to back for `minutes` (5 in
+  Standard, 20 in Full). From that we get:
+  - **peak**: the best single generation
+  - **sustained**: the median of the last quarter, so one lucky or unlucky run can't swing it
+  - **stability** = sustained ÷ peak; **throttling** is the rest
+
+  The result also carries `burst_tps` from earlier in the run, so you can see the short-test
+  number and the hot number side by side.
+- **Battery** is `battery-drain`. It only runs on battery power (the planner skips it with
+  "unplug the charger" otherwise) and reads charge and drain from `ctx.sensors` after every
+  generation. It reports:
+  - charge used and % per 10k tokens
+  - average watts and tokens per Wh, where the device reports watts
+  - hours of nonstop generation from a full battery: battery capacity ÷ watts when both are
+    known, otherwise worked out from the charge drop
+
+  If the charge goes up, or the drain disappears for three generations in a row, the charger
+  went back in, so the test fails instead of reporting a number that isn't real. A drop under
+  0.5 % with no watt readings is too coarse to trust, and the result says to run it for longer.
+
+The model-running pieces are shared in `crates/core/src/modules/model_run.rs`: choosing the
+backend, the hardware gate, the cache-busting prompt, and `generation_loop`. A new
+model-based test reuses them, so every test runs the same models the same way.

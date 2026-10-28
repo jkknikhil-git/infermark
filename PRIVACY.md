@@ -9,7 +9,7 @@ Everything lives in `~/.infermark/` (or `INFERMARK_HOME`):
 
 | Folder | Contents |
 | --- | --- |
-| `results/` | Benchmark results: hardware model names, scores, timings. |
+| `results/` | Benchmark results: hardware model names, scores, timings, and the sensor readings taken during the run (CPU/GPU load, clocks, temperatures, battery charge and drain). |
 | `profiles/` | Profiles you created. |
 | `packs/` | Test packs you installed. |
 | `settings.toml` | Your settings (storage folder, Ollama address). |
@@ -35,6 +35,7 @@ InferMark only connects to the internet when you:
   data before anything is uploaded, and local file paths are removed).
 
 There is **no telemetry, analytics, crash reporting or advertising**, and no account is needed.
+Sensor readings shown during a run go only to the app's own screen and the local result file.
 
 While a benchmark runs, InferMark talks to inference engines **on your own computer**: the
 llama.cpp server it starts (listening on `127.0.0.1` only, protected by a random per-run key) and,
