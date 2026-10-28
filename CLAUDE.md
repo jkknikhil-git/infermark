@@ -46,6 +46,23 @@ llama.cpp from source (CMake, a C++ compiler, libclang) and CI tests it on Linux
 - **Dependencies.** Workspace crates are `publish = false`; MSRV is 1.80 (no newer std APIs);
   `cargo-deny` runs in CI, so check advisories when adding or upgrading a crate.
 
+## Writing
+
+Prose (README, docs, UI copy, release notes, PR descriptions) is written in the voice of a calm,
+reasonable tech reviewer who has actually run the thing:
+
+- Talk to the reader ("you", "we") and state the main point first.
+- Back every claim with something concrete: a number, a real test result, a named device.
+  "45 tok/s on Iris Xe", not "fast on most laptops".
+- Give the other side credit before disagreeing, and separate what's measured from what's
+  still unknown.
+- Use signposts ("So, first of all…", "And look…", "Here's the thing…") and the occasional
+  triplet. No padding, no hype, never ranty.
+- End sections with practical advice and a light, humble close rather than a sales pitch.
+
+Keep code comments, error messages, commit subjects (short imperative), schemas and the policy
+text in PRIVACY.md and SECURITY.md plain and exact.
+
 ## UI
 
 Material 3 look using the tokens in `apps/desktop/src/styles.css`; no generic "AI" styling.
