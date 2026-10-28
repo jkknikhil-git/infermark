@@ -10,9 +10,12 @@ use infermark_core::engine::{self, Accel, EngineCatalog, EngineStatus, EngineSto
 use infermark_core::models::download::{self, DownloadPolicy, Progress};
 use infermark_core::models::{Catalog, ModelStore};
 use infermark_core::{
-    model_list, packs, paths, plan, profiles, run as run_benchmark, settings, Registry, RunEvent,
+    model_list, packs, paths, plan, preflight, profiles, run as run_benchmark, settings, Registry,
+    RunEvent,
 };
-use infermark_sdk::{GateSettings, HardwareInfo, ModuleStatus, PlanEntry, RunResult};
+use infermark_sdk::{
+    GateSettings, HardwareInfo, ModuleStatus, PlanEntry, PreflightCheck, RunResult,
+};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -63,6 +66,17 @@ async fn plan_profile(key: String) -> CmdResult<Vec<PlanEntry>> {
         let profile = profiles::resolve(&key).map_err(err)?;
         let hw = infermark_hwprobe::probe();
         Ok(plan(&profile, &Registry::builtin(), &hw))
+    })
+    .await
+    .map_err(err)?
+}
+
+/// What could skew a run of this profile right now (low memory, battery saver, heat...).
+#[tauri::command]
+async fn preflight_checks(key: String) -> CmdResult<Vec<PreflightCheck>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let profile = profiles::resolve(&key).map_err(err)?;
+        Ok(preflight::check(&profile, &preflight::Inputs::current()))
     })
     .await
     .map_err(err)?
@@ -496,6 +510,7 @@ pub fn run() {
             live_status,
             list_profiles,
             plan_profile,
+            preflight_checks,
             start_run,
             cancel_run,
             list_results,

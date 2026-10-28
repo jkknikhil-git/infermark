@@ -67,7 +67,11 @@ impl Profile {
         if self.run.repeats == 0 {
             return invalid("run.repeats", "must be at least 1");
         }
-        if !(self.gate.memory_margin > 0.0 && self.gate.memory_margin <= 1.0) {
+        if self
+            .gate
+            .memory_margin
+            .is_some_and(|m| !(m > 0.0 && m <= 1.0))
+        {
             return invalid("gate.memory_margin", "must be between 0 (exclusive) and 1");
         }
         if self.gate.min_tokens_per_sec < 0.0 {
@@ -172,19 +176,31 @@ pub struct GateSettings {
     /// Skip models predicted to generate slower than this.
     #[serde(default = "d_min_tps")]
     pub min_tokens_per_sec: f64,
-    /// Fraction of available memory a model may use.
-    #[serde(default = "d_margin")]
-    pub memory_margin: f64,
+    /// Fraction of total memory a model may use. When unset, the default depends on the OS
+    /// (see [`GateSettings::memory_margin_for`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_margin: Option<f64>,
     /// Run models even when the gate says they won't fit ("I know what I'm doing").
     #[serde(default)]
     pub allow_ineligible: bool,
+}
+
+impl GateSettings {
+    /// The memory margin to use on `os`: the profile's value, or 0.85 on desktops and 0.55 on
+    /// phones, where the OS closes apps long before memory is actually full.
+    pub fn memory_margin_for(&self, os: crate::OsFamily) -> f64 {
+        self.memory_margin.unwrap_or(match os {
+            crate::OsFamily::Android | crate::OsFamily::Ios => 0.55,
+            _ => 0.85,
+        })
+    }
 }
 
 impl Default for GateSettings {
     fn default() -> Self {
         Self {
             min_tokens_per_sec: d_min_tps(),
-            memory_margin: d_margin(),
+            memory_margin: None,
             allow_ineligible: false,
         }
     }
@@ -285,9 +301,6 @@ fn d_context_sizes() -> Vec<u32> {
 fn d_min_tps() -> f64 {
     2.0
 }
-fn d_margin() -> f64 {
-    0.85
-}
 fn d_w_speed() -> f64 {
     0.25
 }
@@ -315,7 +328,17 @@ mod tests {
     fn minimal_profile_gets_defaults() {
         let p = Profile::from_toml("schema = 1\nname = \"Mini\"\n").unwrap();
         assert_eq!(p.run.repeats, 3);
-        assert_eq!(p.gate.memory_margin, 0.85);
+        assert_eq!(p.gate.memory_margin, None);
+        assert_eq!(p.gate.memory_margin_for(crate::OsFamily::Windows), 0.85);
+        assert_eq!(p.gate.memory_margin_for(crate::OsFamily::Android), 0.55);
+        let set = Profile::from_toml(
+            "schema = 1
+name = \"x\"
+[gate]
+memory_margin = 0.7",
+        )
+        .unwrap();
+        assert_eq!(set.gate.memory_margin_for(crate::OsFamily::Ios), 0.7);
         assert!(p.modules.is_empty());
     }
 

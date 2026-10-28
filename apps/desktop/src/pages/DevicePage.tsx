@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, gb, type HardwareInfo, type ProfileEntry, type RunResult } from "../api";
-import { Banner, Icon, Progress } from "../components/ui";
+import { Banner, Checks, Icon, Progress } from "../components/ui";
+import { usePreflight } from "../preflight";
 import { overallProgress, type RunState } from "../run-state";
 import { homeHeadline } from "../summary";
 
@@ -39,6 +40,8 @@ export default function HomePage({
   const [profiles, setProfiles] = useState<ProfileEntry[]>([]);
   const [latest, setLatest] = useState<{ path: string; result: RunResult } | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const running = run.phase === "running";
+  const checks = usePreflight(profileKey, !running);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -90,7 +93,6 @@ export default function HomePage({
     };
   }, []);
 
-  const running = run.phase === "running";
   const headline = latest ? homeHeadline(latest.result) : null;
 
   return (
@@ -163,6 +165,8 @@ export default function HomePage({
           </button>
         )}
       </section>
+
+      {!running && <Checks checks={checks} title="Before you start" />}
 
       {hw && (
         <section className="card" aria-label="Device summary">

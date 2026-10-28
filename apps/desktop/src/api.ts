@@ -19,6 +19,8 @@ export interface HardwareInfo {
     physical_cores: number | null;
     logical_cores: number;
     frequency_mhz: number | null;
+    /** Groups of identical cores, fastest first; absent in older results. */
+    clusters?: { physical_cores: number; logical_cores: number; max_mhz: number | null }[];
   };
   memory: { total_bytes: number; available_bytes: number };
   gpus: {
@@ -102,6 +104,13 @@ export interface ModuleRecord {
   output: { metrics: Metric[]; series: Series[]; notes: string[] };
 }
 
+/** Something found just before a run that could make results lower than this device can do. */
+export interface PreflightCheck {
+  id: string;
+  level: "info" | "warning";
+  message: string;
+}
+
 export interface RunResult {
   schema: number;
   infermark_version: string;
@@ -112,6 +121,8 @@ export interface RunResult {
   profile: Profile;
   plan: PlanEntry[];
   modules: ModuleRecord[];
+  /** What looked off just before the run; absent in older results. */
+  preflight?: PreflightCheck[];
   /** Sensor data for the whole run; absent in older results. */
   telemetry?: Telemetry;
 }
@@ -147,7 +158,7 @@ export interface Telemetry {
 }
 
 export type RunEvent =
-  | { type: "run-started"; sensors: SensorInventory }
+  | { type: "run-started"; sensors: SensorInventory; checks: PreflightCheck[] }
   | { type: "sensors"; t: number; readings: SensorReading[] }
   | { type: "module-started"; module_id: string; index: number; total: number }
   | { type: "module-progress"; module_id: string; progress: { fraction: number; message: string; live?: LiveValue } }
@@ -266,6 +277,8 @@ export const api = {
       errors: [],
     })),
   planProfile: (key: string) => call<PlanEntry[]>("plan_profile", { key }, () => sample.plan(key)),
+  preflightChecks: (key: string) =>
+    call<PreflightCheck[]>("preflight_checks", { key }, () => sample.preflight),
   startRun: (key: string) => call<void>("start_run", { key }, () => sample.startRun(key)),
   cancelRun: () => call<void>("cancel_run", undefined, () => sample.cancelRun()),
   listResults: () => call<ResultSummary[]>("list_results", undefined, () => sample.results()),

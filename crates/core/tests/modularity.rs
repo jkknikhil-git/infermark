@@ -31,6 +31,7 @@ fn intel_laptop() -> HardwareInfo {
             physical_cores: Some(4),
             logical_cores: 8,
             frequency_mhz: Some(3200),
+            clusters: vec![],
         },
         memory: MemoryInfo {
             total_bytes: 16 * GIB,

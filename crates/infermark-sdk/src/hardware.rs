@@ -83,6 +83,34 @@ pub struct CpuInfo {
     pub logical_cores: u32,
     /// Reported base/current frequency in MHz.
     pub frequency_mhz: Option<u64>,
+    /// Groups of identical cores, fastest first: one group on most desktops, two on Intel
+    /// hybrid chips (performance + efficiency), two or three on phones (prime, big, little).
+    /// Empty when the layout couldn't be read.
+    #[serde(default)]
+    pub clusters: Vec<CpuCluster>,
+}
+
+/// Cores of one kind.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct CpuCluster {
+    pub physical_cores: u32,
+    pub logical_cores: u32,
+    /// Highest clock these cores reach, when the OS reports it.
+    pub max_mhz: Option<u32>,
+}
+
+impl CpuInfo {
+    /// Physical cores outside the slowest cluster ("big" cores), when there is more than one
+    /// cluster. llama.cpp is often fastest on these alone, because the little cores hold the
+    /// big ones back.
+    pub fn fast_cores(&self) -> Option<u32> {
+        (self.clusters.len() > 1).then(|| {
+            self.clusters[..self.clusters.len() - 1]
+                .iter()
+                .map(|c| c.physical_cores)
+                .sum()
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]

@@ -74,3 +74,48 @@ fn platform_power_source() -> Option<PowerSource> {
 fn platform_power_source() -> Option<PowerSource> {
     None
 }
+
+/// Whether the OS's battery saver / low power mode is on; `None` when it can't be told.
+pub fn power_saver() -> Option<bool> {
+    platform_power_saver()
+}
+
+#[cfg(windows)]
+fn platform_power_saver() -> Option<bool> {
+    use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+    let mut status = SYSTEM_POWER_STATUS::default();
+    // SAFETY: GetSystemPowerStatus only writes into the struct we pass.
+    unsafe { GetSystemPowerStatus(&mut status) }.ok()?;
+    Some(status.SystemStatusFlag == 1)
+}
+
+/// The ACPI platform profile, which desktop power settings switch to `low-power`.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn platform_power_saver() -> Option<bool> {
+    let profile = std::fs::read_to_string("/sys/firmware/acpi/platform_profile").ok()?;
+    Some(profile.trim() == "low-power")
+}
+
+/// `pmset -g` lists `lowpowermode 1` while Low Power Mode is on.
+#[cfg(target_os = "macos")]
+fn platform_power_saver() -> Option<bool> {
+    let out = std::process::Command::new("pmset")
+        .arg("-g")
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let line = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("lowpowermode"))?;
+    Some(line.split_whitespace().nth(1) == Some("1"))
+}
+
+#[cfg(not(any(
+    windows,
+    target_os = "linux",
+    target_os = "android",
+    target_os = "macos"
+)))]
+fn platform_power_saver() -> Option<bool> {
+    None
+}

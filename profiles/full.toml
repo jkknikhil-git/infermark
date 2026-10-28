@@ -19,6 +19,8 @@ iterations = 10
 
 [modules.inference-perf]
 
+[modules.thread-sweep]
+
 [modules.context-scaling]
 
 [modules.quant-comparison]

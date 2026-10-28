@@ -11,6 +11,7 @@ import type {
   Tier,
   PackSummary,
   PlanEntry,
+  PreflightCheck,
   ProfileEntry,
   ResultSummary,
   RunListeners,
@@ -118,6 +119,14 @@ const sustainedSpeeds: [number, number][] = Array.from({ length: 100 }, (_, i) =
   return [t, Math.round((38 + 6 * Math.exp(-t / 70) + Math.sin(i) * 0.4) * 100) / 100];
 });
 
+export const preflight: PreflightCheck[] = [
+  {
+    id: "busy-cpu",
+    level: "warning",
+    message: "Other apps are using 31% of the CPU right now. Close them or wait for them to finish.",
+  },
+];
+
 // What this preview "device" can measure: like a Windows laptop with an Intel iGPU.
 const ch = (source: string, kind: SensorReading["kind"], label: string) => ({ source, kind, label });
 const sensors: SensorInventory = {
@@ -178,6 +187,7 @@ const sampleResult: RunResult = {
   hardware,
   profile: profiles[0].profile,
   plan: plan("quick"),
+  preflight,
   telemetry: telemetryFor(330),
   modules: [
     {
@@ -297,7 +307,7 @@ export function startRun(_key: string) {
   let i = 0;
   let pct = 0;
   let t = 0;
-  listeners?.onEvent({ type: "run-started", sensors });
+  listeners?.onEvent({ type: "run-started", sensors, checks: preflight });
   listeners?.onEvent({ type: "sensors", t, readings: readingsAt(t) });
   listeners?.onEvent({ type: "module-started", module_id: steps[0].module_id, index: 0, total: steps.length });
   timer = window.setInterval(() => {

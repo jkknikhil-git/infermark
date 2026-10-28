@@ -13,7 +13,9 @@ use infermark_core::models::{Catalog, ModelStore};
 use infermark_core::{
     model_list, packs, paths, plan, profiles, run, schema, settings, Registry, RunEvent,
 };
-use infermark_sdk::{GateSettings, HardwareInfo, ModuleStatus, PlanStatus, PowerSource, RunResult};
+use infermark_sdk::{
+    CheckLevel, GateSettings, HardwareInfo, ModuleStatus, PlanStatus, PowerSource, RunResult,
+};
 
 #[derive(Parser)]
 #[command(
@@ -577,8 +579,17 @@ fn print_event(event: &RunEvent) {
                 progress.message
             ),
         },
+        RunEvent::RunStarted { checks, .. } => {
+            for c in checks {
+                let mark = match c.level {
+                    CheckLevel::Warning => "!",
+                    CheckLevel::Info => "i",
+                };
+                eprintln!("{mark} {}", c.message);
+            }
+        }
         // Sensors are saved in the result; the terminal only shows progress.
-        RunEvent::RunStarted { .. } | RunEvent::Sensors { .. } => {}
+        RunEvent::Sensors { .. } => {}
         RunEvent::ModuleFinished { record } => match &record.status {
             ModuleStatus::Completed => {
                 eprintln!("       done in {:.1}s", record.duration_ms / 1000.0)

@@ -24,6 +24,8 @@ iterations = 5
 [modules.inference-perf]
 max_models = 3
 
+[modules.thread-sweep]
+
 [modules.context-scaling]
 
 [modules.sustained-load]

@@ -25,4 +25,11 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dxgi",
     "Win32_System_Power",
+    "Win32_System_SystemInformation",
 ] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, formatDate, formatDuration, type ModuleRecord, type ResultSummary, type RunResult } from "../api";
 import { LineChart } from "../components/Chart";
-import { Banner, EmptyState, Icon, PageHeader } from "../components/ui";
+import { Banner, Checks, EmptyState, Icon, PageHeader } from "../components/ui";
 import { missingSensors, sensorCharts } from "../sensor-charts";
 import { categorize, formatNumber, type CategoryView } from "../summary";
 
@@ -124,6 +124,8 @@ function ResultDetail({ path, onBack }: { path: string; onBack: () => void }) {
               Combines the categories below. It arrives once the endurance, battery and quality tests are in.
             </span>
           </section>
+
+          <Checks checks={result.preflight ?? []} title="When this run started" />
 
           <section className="card" aria-label="Categories" style={{ padding: "8px 16px" }}>
             {categories.map((c) => (

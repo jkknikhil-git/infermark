@@ -1,7 +1,15 @@
 // State of the benchmark in progress. Lives at the app level so a run keeps going (and stays
 // visible) while the user browses other pages.
 import { useEffect, useReducer } from "react";
-import { listenToRuns, type LiveValue, type ModuleRecord, type ResultSummary, type SensorInventory, type SensorReading } from "./api";
+import {
+  listenToRuns,
+  type LiveValue,
+  type ModuleRecord,
+  type PreflightCheck,
+  type ResultSummary,
+  type SensorInventory,
+  type SensorReading,
+} from "./api";
 
 /** Points kept per live chart (10 minutes at one sample a second). */
 export const LIVE_POINTS = 600;
@@ -13,6 +21,8 @@ export interface RunState {
   finished: ModuleRecord[];
   summary: ResultSummary | null;
   error: string | null;
+  /** What looked off when the run started. */
+  checks: PreflightCheck[];
   /** Which sensors this device has; null until the run reports it. */
   sensors: SensorInventory | null;
   /** Sensor history by channel key (`cpu.utilization`), x = seconds since the run started. */
@@ -26,7 +36,7 @@ export interface RunState {
 
 export type RunAction =
   | { type: "start"; profileKey: string }
-  | { type: "run-started"; sensors: SensorInventory }
+  | { type: "run-started"; sensors: SensorInventory; checks: PreflightCheck[] }
   | { type: "sensors"; t: number; readings: SensorReading[] }
   | { type: "started"; moduleId: string; index: number; total: number }
   | { type: "progress"; moduleId: string; fraction: number; message: string; live?: LiveValue }
@@ -42,6 +52,7 @@ export const initialRun: RunState = {
   finished: [],
   summary: null,
   error: null,
+  checks: [],
   sensors: null,
   history: {},
   t: 0,
@@ -59,7 +70,7 @@ function reduce(s: RunState, a: RunAction): RunState {
     case "start":
       return { ...initialRun, phase: "running", profileKey: a.profileKey };
     case "run-started":
-      return { ...s, sensors: a.sensors };
+      return { ...s, sensors: a.sensors, checks: a.checks };
     case "sensors": {
       const history = { ...s.history };
       for (const r of a.readings) {
@@ -102,7 +113,7 @@ export function useRunState() {
     let cancelled = false;
     listenToRuns({
       onEvent: (e) => {
-        if (e.type === "run-started") dispatch({ type: "run-started", sensors: e.sensors });
+        if (e.type === "run-started") dispatch({ type: "run-started", sensors: e.sensors, checks: e.checks ?? [] });
         else if (e.type === "sensors") dispatch({ type: "sensors", t: e.t, readings: e.readings });
         else if (e.type === "module-started") dispatch({ type: "started", moduleId: e.module_id, index: e.index, total: e.total });
         else if (e.type === "module-progress")

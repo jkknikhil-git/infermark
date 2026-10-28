@@ -14,6 +14,7 @@ infermark-sdk.workspace = true
 infermark-models.workspace = true
 infermark-engine.workspace = true
 infermark-telemetry.workspace = true
+infermark-hwprobe.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 serde.workspace = true
@@ -28,5 +29,4 @@ regex = "1"
 url.workspace = true
 
 [dev-dependencies]
-infermark-hwprobe.workspace = true
 tempfile.workspace = true

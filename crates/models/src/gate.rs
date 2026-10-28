@@ -112,8 +112,9 @@ pub fn assess(
     system_bandwidth_gbps: Option<f64>,
 ) -> Verdict {
     let needed = memory_needed(file_bytes, shape, context);
-    let ram_budget = (hw.memory.total_bytes as f64 * gate.memory_margin) as u64;
-    let vram_budget = (hw.max_dedicated_vram_bytes() as f64 * gate.memory_margin) as u64;
+    let margin = gate.memory_margin_for(hw.os.family);
+    let ram_budget = (hw.memory.total_bytes as f64 * margin) as u64;
+    let vram_budget = (hw.max_dedicated_vram_bytes() as f64 * margin) as u64;
     let active = shape.active_fraction.unwrap_or(1.0).clamp(0.01, 1.0);
     let predict = |bytes_in_ram: u64| {
         system_bandwidth_gbps.filter(|b| *b > 0.0).map(|bw| {
@@ -219,6 +220,7 @@ pub(crate) mod tests {
                 physical_cores: Some(4),
                 logical_cores: 8,
                 frequency_mhz: None,
+                clusters: vec![],
             },
             memory: MemoryInfo {
                 total_bytes: gib(ram_gb),
@@ -289,6 +291,29 @@ pub(crate) mod tests {
             ..Default::default()
         };
         assert!(v.runnable(&allow));
+    }
+
+    #[test]
+    fn phones_leave_more_memory_free_than_desktops() {
+        // A 3B Q4 model needs about 2.9 GB with a 4k context. On a 4 GB device the desktop
+        // margin (85% = 3.4 GB) lets it in, but Android closes apps well before memory is
+        // full, so a phone keeps it to 55% (2.2 GB).
+        let desktop = device(4.0, None);
+        let mut phone = device(4.0, None);
+        phone.os.family = OsFamily::Android;
+        let gate = GateSettings::default();
+        let on = |hw: &HardwareInfo| assess(Q4_3B, &SHAPE_3B, 4096, hw, &gate, Some(25.0)).tier;
+        assert_ne!(on(&desktop), Tier::TooBig);
+        assert_eq!(on(&phone), Tier::TooBig);
+        // A profile can still set its own margin.
+        let lenient = GateSettings {
+            memory_margin: Some(0.85),
+            ..Default::default()
+        };
+        assert_ne!(
+            assess(Q4_3B, &SHAPE_3B, 4096, &phone, &lenient, Some(25.0)).tier,
+            Tier::TooBig
+        );
     }
 
     #[test]

@@ -22,7 +22,7 @@ export const CATEGORIES: CategoryDef[] = [
     name: "Speed",
     icon: "speed",
     blurb: "How fast models write answers and read your prompt",
-    modules: ["inference-perf", "memory-bandwidth"],
+    modules: ["inference-perf", "thread-sweep", "memory-bandwidth"],
   },
   {
     id: "responsiveness",
@@ -176,6 +176,8 @@ const CATEGORY_SENSORS: Partial<Record<CategoryId, string[][]>> = {
 };
 
 function chartsFor(category: CategoryId, records: ModuleRecord[], result: RunResult): CategoryChart[] {
+  // Only curves over time; speed per run or per thread count reads better as numbers.
+  if (!CATEGORY_SENSORS[category]) return [];
   const record = records.find((r) => r.status.status === "completed" && r.output.series.length > 0);
   if (!record) return [];
   const charts: CategoryChart[] = record.output.series.map((s) => ({

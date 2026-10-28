@@ -36,6 +36,14 @@
         "$ref": "#/definitions/PlanEntry"
       }
     },
+    "preflight": {
+      "description": "Conditions found just before the run that can skew it (low free memory, battery saver, a hot CPU...). Empty when everything looked fine.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PreflightCheck"
+      }
+    },
     "profile": {
       "description": "The exact profile used, so the run can be reproduced.",
       "allOf": [
@@ -101,6 +109,53 @@
         }
       }
     },
+    "CheckLevel": {
+      "oneOf": [
+        {
+          "description": "Good to know; results are still representative.",
+          "type": "string",
+          "enum": [
+            "info"
+          ]
+        },
+        {
+          "description": "Likely to make results lower than this device can do.",
+          "type": "string",
+          "enum": [
+            "warning"
+          ]
+        }
+      ]
+    },
+    "CpuCluster": {
+      "description": "Cores of one kind.",
+      "type": "object",
+      "required": [
+        "logical_cores",
+        "physical_cores"
+      ],
+      "properties": {
+        "logical_cores": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "max_mhz": {
+          "description": "Highest clock these cores reach, when the OS reports it.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "physical_cores": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
     "CpuInfo": {
       "type": "object",
       "required": [
@@ -111,6 +166,14 @@
       "properties": {
         "brand": {
           "type": "string"
+        },
+        "clusters": {
+          "description": "Groups of identical cores, fastest first: one group on most desktops, two on Intel hybrid chips (performance + efficiency), two or three on phones (prime, big, little). Empty when the layout couldn't be read.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CpuCluster"
+          }
         },
         "frequency_mhz": {
           "description": "Reported base/current frequency in MHz.",
@@ -157,9 +220,11 @@
           "type": "boolean"
         },
         "memory_margin": {
-          "description": "Fraction of available memory a model may use.",
-          "default": 0.85,
-          "type": "number",
+          "description": "Fraction of total memory a model may use. When unset, the default depends on the OS (see [`GateSettings::memory_margin_for`]).",
+          "type": [
+            "number",
+            "null"
+          ],
           "format": "double"
         },
         "min_tokens_per_sec": {
@@ -714,6 +779,27 @@
         "unknown"
       ]
     },
+    "PreflightCheck": {
+      "description": "One thing worth knowing before a run starts.",
+      "type": "object",
+      "required": [
+        "id",
+        "level",
+        "message"
+      ],
+      "properties": {
+        "id": {
+          "description": "Stable id, e.g. `low-memory`, `battery-saver`, `hot-cpu`.",
+          "type": "string"
+        },
+        "level": {
+          "$ref": "#/definitions/CheckLevel"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
     "Profile": {
       "type": "object",
       "required": [
@@ -728,7 +814,6 @@
         "gate": {
           "default": {
             "allow_ineligible": false,
-            "memory_margin": 0.85,
             "min_tokens_per_sec": 2.0
           },
           "allOf": [

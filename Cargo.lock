@@ -1847,12 +1847,14 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "infermark-sdk",
+ "libc",
  "nvml-wrapper",
  "serde",
  "serde_json",
  "sha2",
  "starship-battery",
  "sysinfo",
+ "tempfile",
  "windows 0.58.0",
  "wmi",
 ]

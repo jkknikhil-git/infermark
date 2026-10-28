@@ -4,23 +4,25 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use infermark_sdk::{
-    HardwareInfo, ModuleError, ModuleOutput, ModuleRecord, ModuleStatus, PlanStatus, Profile,
-    Progress, RunContext, RunResult, SensorChannel, SensorInventory, SensorProvider, SensorReading,
-    SensorSnapshot, Telemetry, SCHEMA_VERSION,
+    HardwareInfo, ModuleError, ModuleOutput, ModuleRecord, ModuleStatus, PlanStatus,
+    PreflightCheck, Profile, Progress, RunContext, RunResult, SensorChannel, SensorInventory,
+    SensorProvider, SensorReading, SensorSnapshot, Telemetry, SCHEMA_VERSION,
 };
 use infermark_telemetry::{Sample, Sampler, DEFAULT_MAX_POINTS};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::{plan, privacy, Registry};
+use crate::{plan, preflight, privacy, Registry};
 
 /// Live updates while a run is in progress (forwarded to the CLI progress bar or the app).
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum RunEvent {
-    /// First event of every run: which sensors this device has (and which it doesn't).
+    /// First event of every run: which sensors this device has (and which it doesn't), and
+    /// anything found just before starting that could skew the results.
     RunStarted {
         sensors: SensorInventory,
+        checks: Vec<PreflightCheck>,
     },
     /// One sensor sample, about once a second; `t` is seconds since the run started.
     Sensors {
@@ -71,11 +73,22 @@ pub fn run_with_sensors(
     hardware: &HardwareInfo,
     on_event: &(dyn Fn(RunEvent) + Send + Sync),
     cancel: &AtomicBool,
-    sensors: Vec<Box<dyn SensorProvider>>,
+    mut sensors: Vec<Box<dyn SensorProvider>>,
 ) -> RunResult {
     let channels: Vec<SensorChannel> = sensors.iter().flat_map(|p| p.channels()).collect();
+    let checks = preflight::check(
+        profile,
+        &preflight::Inputs {
+            memory: hardware.memory.clone(),
+            battery: hardware.battery.clone(),
+            power_source: hardware.power_source,
+            power_saver: infermark_hwprobe::power_saver(),
+            readings: preflight::sample_twice(&mut sensors),
+        },
+    );
     on_event(RunEvent::RunStarted {
         sensors: SensorInventory::from_channels(channels),
+        checks: checks.clone(),
     });
 
     // The sampler thread needs a 'static callback but `on_event` is borrowed, so samples go
@@ -104,6 +117,7 @@ pub fn run_with_sensors(
         let result = run_modules(profile, registry, hardware, on_event, cancel, &snapshot);
         let recording = sampler.stop();
         RunResult {
+            preflight: checks,
             telemetry: Some(Telemetry {
                 sensors: recording.inventory,
                 interval_ms: recording.interval_ms,
@@ -220,6 +234,7 @@ fn run_modules(
     }
 
     RunResult {
+        preflight: Vec::new(),
         telemetry: None,
         schema: SCHEMA_VERSION,
         infermark_version: crate::VERSION.to_string(),
@@ -284,7 +299,7 @@ mod tests {
         );
         let events = events.into_inner().unwrap();
         match &events[0] {
-            RunEvent::RunStarted { sensors } => {
+            RunEvent::RunStarted { sensors, .. } => {
                 assert!(sensors
                     .available
                     .iter()

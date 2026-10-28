@@ -26,8 +26,8 @@ pub mod sensor;
 pub use backend::{Backend, GenerateRequest, GenerationStats, LoadOptions, ModelSpec, TokenEvent};
 pub use exporter::Exporter;
 pub use hardware::{
-    BatteryInfo, CpuInfo, GpuInfo, GpuVendor, HardwareInfo, MemoryInfo, NpuInfo, OsFamily, OsInfo,
-    PowerSource,
+    BatteryInfo, CpuCluster, CpuInfo, GpuInfo, GpuVendor, HardwareInfo, MemoryInfo, NpuInfo,
+    OsFamily, OsInfo, PowerSource,
 };
 pub use module::{
     BenchModule, Direction, LiveValue, Metric, ModuleCategory, ModuleDescriptor, ModuleError,
@@ -38,7 +38,10 @@ pub use profile::{
     is_kebab_id, GateSettings, ModelSelection, ModuleSelection, PackSelection, Profile,
     ProfileError, RunSettings, ScoringWeights,
 };
-pub use result::{ModuleRecord, ModuleStatus, PlanEntry, PlanStatus, RunResult, Telemetry};
+pub use result::{
+    CheckLevel, ModuleRecord, ModuleStatus, PlanEntry, PlanStatus, PreflightCheck, RunResult,
+    Telemetry,
+};
 pub use scorer::{ScoreResult, Scorer};
 pub use sensor::{
     SensorChannel, SensorInventory, SensorKind, SensorProvider, SensorReading, SensorSnapshot,

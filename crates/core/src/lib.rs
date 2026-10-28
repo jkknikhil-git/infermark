@@ -12,6 +12,7 @@ pub mod modules;
 pub mod packs;
 pub mod paths;
 pub mod planner;
+pub mod preflight;
 pub mod privacy;
 pub mod profiles;
 pub mod registry;

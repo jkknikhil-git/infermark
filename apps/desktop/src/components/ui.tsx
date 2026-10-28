@@ -69,6 +69,22 @@ export function Banner({ icon = "info", error, children }: { icon?: string; erro
   );
 }
 
+/** Pre-run checks as banners: warnings first, then notes. */
+export function Checks({ checks, title }: { checks: { id: string; level: "info" | "warning"; message: string }[]; title?: string }) {
+  if (checks.length === 0) return null;
+  const sorted = [...checks].sort((a, b) => (a.level === b.level ? 0 : a.level === "warning" ? -1 : 1));
+  return (
+    <section aria-label={title ?? "Before you start"} className="checks">
+      {title && <h2 className="title-small">{title}</h2>}
+      {sorted.map((c) => (
+        <Banner key={c.id} icon={c.level === "warning" ? "warning" : "info"}>
+          {c.message}
+        </Banner>
+      ))}
+    </section>
+  );
+}
+
 export function Progress({ value }: { value: number }) {
   const pct = Math.round(Math.min(Math.max(value, 0), 1) * 100);
   return (

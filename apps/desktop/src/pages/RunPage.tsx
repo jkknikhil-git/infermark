@@ -1,7 +1,8 @@
 import { useEffect, useState, type Dispatch } from "react";
 import { api, formatDuration, type PlanEntry, type ProfileEntry } from "../api";
 import { LineChart } from "../components/Chart";
-import { Banner, Icon, PageHeader, Progress } from "../components/ui";
+import { Banner, Checks, Icon, PageHeader, Progress } from "../components/ui";
+import { usePreflight } from "../preflight";
 import { overallProgress, type RunAction, type RunState } from "../run-state";
 import { missingSensors, sensorCharts } from "../sensor-charts";
 import { formatNumber } from "../summary";
@@ -45,6 +46,7 @@ export default function RunPage({
   }, [selected]);
 
   const running = run.phase === "running";
+  const checks = usePreflight(selected, run.phase === "idle");
   const planned = plan?.filter((p) => p.status.status === "planned") ?? [];
   const seconds = planned.reduce((t, p) => t + (p.descriptor?.estimated_seconds ?? 0), 0);
   const doneIds = new Set(run.finished.map((r) => r.module_id));
@@ -115,6 +117,7 @@ export default function RunPage({
           Keep InferMark open while it runs. The screen stays on, and leaving the app can slow the test down.
         </Banner>
       )}
+      {run.phase !== "idle" && <Checks checks={run.checks} title="When this run started" />}
       {backgrounded && run.phase !== "idle" && (
         <Banner icon="warning">
           InferMark was in the background during this run, so some results may be lower than this device can really do.
@@ -201,6 +204,8 @@ export default function RunPage({
           </div>
         )}
       </section>
+
+      {run.phase === "idle" && <Checks checks={checks} title="Before you start" />}
 
       {run.phase === "idle" && (
         <div className="sticky-actions">

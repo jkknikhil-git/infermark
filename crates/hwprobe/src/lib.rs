@@ -2,10 +2,11 @@
 //! `None` so results show it as missing rather than wrong.
 
 mod battery;
+mod cpu;
 mod gpu;
 mod nvidia;
 
-pub use battery::{read_battery, BatteryReading};
+pub use battery::{power_saver, read_battery, BatteryReading};
 
 use infermark_sdk::{
     BatteryInfo, CpuInfo, HardwareInfo, MemoryInfo, OsFamily, OsInfo, PowerSource,
@@ -87,6 +88,7 @@ fn cpu_info(sys: &System) -> CpuInfo {
         physical_cores: sys.physical_core_count().map(|c| c as u32),
         logical_cores: sys.cpus().len() as u32,
         frequency_mhz: first.map(|c| c.frequency()).filter(|f| *f > 0),
+        clusters: cpu::clusters(),
     }
 }
 

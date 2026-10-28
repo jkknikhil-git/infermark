@@ -31,8 +31,9 @@ Registry ───────┘                                               
 1. **Profile** says which modules to run, in order, with their settings.
 2. **Planner** checks each module exists in this build and that the device meets its
    `Requirement`s (RAM, GPU vendor, battery…). Anything else is skipped with a readable reason.
-3. **Runner** runs planned modules one at a time, streams progress events, and records failures
-   without stopping the run. A cancel flag stops after the current step.
+3. **Runner** first runs the pre-run checks (`preflight.rs`, see below), then runs planned modules
+   one at a time, streams progress events, and records failures without stopping the run. A
+   cancel flag stops after the current step.
 4. The **RunResult** embeds the hardware, the exact profile and every module's output, so a run can
    be reproduced and compared later.
 
@@ -114,6 +115,25 @@ version string. It is off by default; CI builds it on Linux and generates tokens
 Every note and error a module produces is passed through `privacy::redact` before it is saved, so
 engine logs can't leak the account name through file paths.
 
+The gate's memory budget is a share of total memory: 85% on desktops, 55% on Android and iOS.
+That gap is deliberate. A desktop will happily page memory out, but a phone closes the app long
+before memory is full, so a model that "fits" at 85% gets killed mid-test. A profile can set
+`gate.memory_margin` to override both.
+
+### Cores and threads
+
+`HardwareInfo.cpu.clusters` lists groups of identical cores, fastest first. Windows gets them
+from each core's efficiency class, Linux and Android from every core's highest clock in
+`/sys/devices/system/cpu`, and macOS from `hw.perflevelN`. Most desktops have one group; the
+i5-11320H this was built on reads as 4 cores, 8 threads. An Intel hybrid chip has two, and a
+phone has two or three (prime, big, little).
+
+`thread-sweep` uses that layout to answer a practical question: how many threads should
+llama.cpp get? It runs the smallest model on the CPU alone (GPU off) with the fast cores only
+(when there's more than one kind), every core, and every thread (when there are more threads
+than cores), then reports the fastest. More isn't automatically better here. Generation is
+limited by memory bandwidth, and little cores can hold the big ones back.
+
 ## Telemetry
 
 ```text
@@ -166,6 +186,27 @@ phone's providers later. Each `ModuleRecord` also stores `offset_ms`, which line
 with the run's telemetry. In the app, charts have one series and one y-axis each, a sensor that
 exists but can't be read says so instead of drawing zeros, and the standard sensors a device
 lacks are listed under the charts.
+
+## Before a run
+
+So, first of all, a benchmark is only as fair as the moment you press Start. `preflight::check`
+looks at the things that quietly drag results down:
+
+| Check | Level | When |
+|---|---|---|
+| `low-memory` | warning | less than 25% or 2 GB of memory free |
+| `busy-cpu` | warning | other apps using 25% or more of the CPU |
+| `battery-saver` | warning | Windows battery saver, macOS Low Power Mode, Linux `low-power` profile |
+| `hot-cpu`, `hot-gpu`, `hot-device` | warning | 80 °C or more, or a phone's thermal state at "serious" |
+| `low-battery` | warning | under 30% while on battery |
+| `on-battery` | info | on battery, and the profile has no battery test |
+| `plugged-in` | info | the profile has a battery test, but the charger is in |
+
+The app shows them under Start and refreshes them every 15 seconds, so closing an app clears
+the warning. The runner checks again as the run begins, sends them in `RunStarted`, and saves
+them in `RunResult.preflight`. A slow number in an old result then comes with its reason
+("only 1.0 GB of 15.8 GB free"). Nothing blocks the run: you can still press Start, but you'll
+know why the number looks off.
 
 ## Burst, sustained and battery
 

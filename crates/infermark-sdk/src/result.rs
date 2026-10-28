@@ -22,6 +22,10 @@ pub struct RunResult {
     pub profile: Profile,
     pub plan: Vec<PlanEntry>,
     pub modules: Vec<ModuleRecord>,
+    /// Conditions found just before the run that can skew it (low free memory, battery saver,
+    /// a hot CPU...). Empty when everything looked fine.
+    #[serde(default)]
+    pub preflight: Vec<PreflightCheck>,
     /// Sensor data sampled for the whole run. Absent in results from before telemetry existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub telemetry: Option<Telemetry>,
@@ -37,6 +41,24 @@ pub struct Telemetry {
     /// x is seconds since the run started.
     #[serde(default)]
     pub series: Vec<Series>,
+}
+
+/// One thing worth knowing before a run starts.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct PreflightCheck {
+    /// Stable id, e.g. `low-memory`, `battery-saver`, `hot-cpu`.
+    pub id: String,
+    pub level: CheckLevel,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CheckLevel {
+    /// Good to know; results are still representative.
+    Info,
+    /// Likely to make results lower than this device can do.
+    Warning,
 }
 
 /// What the planner decided for one module, before anything ran.
