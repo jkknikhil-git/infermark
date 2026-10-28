@@ -15,6 +15,8 @@ import type {
   ResultSummary,
   RunListeners,
   RunResult,
+  SensorInventory,
+  SensorReading,
 } from "./api";
 
 const GIB = 1024 ** 3;
@@ -100,6 +102,55 @@ export function plan(_key: string): PlanEntry[] {
   ];
 }
 
+// What this preview "device" can measure: like a Windows laptop with an Intel iGPU.
+const ch = (source: string, kind: SensorReading["kind"], label: string) => ({ source, kind, label });
+const sensors: SensorInventory = {
+  available: [
+    ch("cpu", "utilization", "CPU load"),
+    ch("cpu", "clock", "CPU clock"),
+    ch("battery", "battery-charge", "Battery charge"),
+    ch("battery", "power", "Battery drain"),
+  ],
+  missing: [
+    ch("cpu", "temperature", "CPU temperature"),
+    ch("gpu", "utilization", "GPU load"),
+    ch("gpu", "temperature", "GPU temperature"),
+    ch("gpu", "power", "GPU power"),
+    ch("device", "thermal-state", "Thermal state"),
+  ],
+};
+
+/** Plausible readings `t` seconds into a run (plugged in, so no battery drain). */
+function readingsAt(t: number): SensorReading[] {
+  const busy = t > 6;
+  return [
+    { source: "cpu", kind: "utilization", value: t === 0 ? null : Math.round((busy ? 62 : 18) + Math.sin(t / 3) * 9) },
+    { source: "cpu", kind: "clock", value: Math.round((busy ? 2950 : 2400) - Math.min(t, 120) * 2 + Math.cos(t / 2) * 60) },
+    { source: "battery", kind: "battery-charge", value: Math.min(82 + t * 0.01, 100) },
+    { source: "battery", kind: "power", value: null },
+  ];
+}
+
+function telemetryFor(seconds: number): RunResult["telemetry"] {
+  const series = new Map<string, [number, number][]>();
+  for (let t = 0; t <= seconds; t++) {
+    for (const r of readingsAt(t)) {
+      if (r.value === null) continue;
+      const key = `${r.source}.${r.kind}`;
+      series.set(key, [...(series.get(key) ?? []), [t, r.value]]);
+    }
+  }
+  const unit: Record<string, string> = { utilization: "%", clock: "MHz", "battery-charge": "%" };
+  return {
+    sensors,
+    interval_ms: 1000,
+    series: [...series].map(([key, points]) => {
+      const c = sensors.available.find((a) => `${a.source}.${a.kind}` === key)!;
+      return { key, label: c.label, x_unit: "s", y_unit: unit[c.kind] ?? "", points };
+    }),
+  };
+}
+
 const sampleResult: RunResult = {
   schema: 1,
   infermark_version: "0.1.0",
@@ -109,6 +160,7 @@ const sampleResult: RunResult = {
   hardware,
   profile: profiles[0].profile,
   plan: plan("quick"),
+  telemetry: telemetryFor(28),
   modules: [
     {
       module_id: "system-probe",
@@ -197,14 +249,24 @@ export function startRun(_key: string) {
   const steps = plan(_key);
   let i = 0;
   let pct = 0;
+  let t = 0;
+  listeners?.onEvent({ type: "run-started", sensors });
+  listeners?.onEvent({ type: "sensors", t, readings: readingsAt(t) });
   listeners?.onEvent({ type: "module-started", module_id: steps[0].module_id, index: 0, total: steps.length });
   timer = window.setInterval(() => {
     const step = steps[i];
-    pct += 0.25;
+    t += 1;
+    listeners?.onEvent({ type: "sensors", t, readings: readingsAt(t) });
+    pct += 0.125;
+    const pass = Math.round(pct * 8);
+    const live =
+      step.module_id === "inference-perf" && pass > 2
+        ? { label: "Qwen3 0.6B · Generation", value: Math.round((45 - pass * 0.4 + Math.random()) * 10) / 10, unit: "tok/s" }
+        : undefined;
     listeners?.onEvent({
       type: "module-progress",
       module_id: step.module_id,
-      progress: { fraction: Math.min(pct, 1), message: `Pass ${Math.round(pct * 4)} of 4` },
+      progress: { fraction: Math.min(pct, 1), message: `Pass ${pass} of 8`, live },
     });
     if (pct >= 1) {
       const record = sampleResult.modules.find((m) => m.module_id === step.module_id) ?? {

@@ -458,6 +458,12 @@
         "module_id": {
           "type": "string"
         },
+        "offset_ms": {
+          "description": "When the module started, in ms since the run started (lines it up with telemetry).",
+          "default": 0.0,
+          "type": "number",
+          "format": "double"
+        },
         "output": {
           "default": {
             "metrics": [],

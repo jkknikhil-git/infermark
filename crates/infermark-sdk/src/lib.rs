@@ -30,8 +30,8 @@ pub use hardware::{
     PowerSource,
 };
 pub use module::{
-    BenchModule, Direction, Metric, ModuleCategory, ModuleDescriptor, ModuleError, ModuleOutput,
-    Progress, Requirement, RunContext, Series,
+    BenchModule, Direction, LiveValue, Metric, ModuleCategory, ModuleDescriptor, ModuleError,
+    ModuleOutput, Progress, Requirement, RunContext, Series,
 };
 pub use pack::{Expected, GenerationSettings, PackItem, PackManifest, PromptTemplate};
 pub use profile::{
@@ -41,8 +41,8 @@ pub use profile::{
 pub use result::{ModuleRecord, ModuleStatus, PlanEntry, PlanStatus, RunResult, Telemetry};
 pub use scorer::{ScoreResult, Scorer};
 pub use sensor::{
-    SensorChannel, SensorInventory, SensorKind, SensorProvider, SensorReading, ThermalState,
-    STANDARD_CHANNELS,
+    SensorChannel, SensorInventory, SensorKind, SensorProvider, SensorReading, SensorSnapshot,
+    ThermalState, STANDARD_CHANNELS,
 };
 
 /// Version of the result / profile / pack file formats produced by this SDK.

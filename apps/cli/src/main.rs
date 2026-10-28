@@ -563,13 +563,22 @@ fn print_event(event: &RunEvent) {
             index,
             total,
         } => eprintln!("[{}/{}] {module_id}", index + 1, total),
-        RunEvent::ModuleProgress { progress, .. } => {
-            eprintln!(
+        RunEvent::ModuleProgress { progress, .. } => match &progress.live {
+            Some(live) => eprintln!(
+                "       {:>3.0}%  {}  ({} {})",
+                progress.fraction * 100.0,
+                progress.message,
+                live.value,
+                live.unit
+            ),
+            None => eprintln!(
                 "       {:>3.0}%  {}",
                 progress.fraction * 100.0,
                 progress.message
-            )
-        }
+            ),
+        },
+        // Sensors are saved in the result; the terminal only shows progress.
+        RunEvent::RunStarted { .. } | RunEvent::Sensors { .. } => {}
         RunEvent::ModuleFinished { record } => match &record.status {
             ModuleStatus::Completed => {
                 eprintln!("       done in {:.1}s", record.duration_ms / 1000.0)

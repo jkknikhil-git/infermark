@@ -168,8 +168,23 @@ fn run_passes_settings_and_survives_failures() {
     assert_eq!(statuses[1], &ModuleStatus::Completed);
     assert!(matches!(statuses[2], ModuleStatus::Skipped { .. }));
     assert_eq!(result.modules[1].output.notes, ["size=64"]);
-    // started + finished for each module
-    assert_eq!(events.lock().unwrap().len(), 6);
+    let events = events.lock().unwrap();
+    assert!(matches!(events[0], RunEvent::RunStarted { .. }));
+    // started + finished for each module (sensor samples arrive in between)
+    let module_events = events
+        .iter()
+        .filter(|e| {
+            matches!(
+                e,
+                RunEvent::ModuleStarted { .. } | RunEvent::ModuleFinished { .. }
+            )
+        })
+        .count();
+    assert_eq!(module_events, 6);
+    assert!(result
+        .modules
+        .windows(2)
+        .all(|w| w[0].offset_ms <= w[1].offset_ms));
 }
 
 #[test]

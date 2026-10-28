@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, formatDate, formatDuration, type ModuleRecord, type ResultSummary, type RunResult } from "../api";
+import { LineChart } from "../components/Chart";
 import { Banner, EmptyState, Icon, PageHeader } from "../components/ui";
+import { missingSensors, sensorCharts } from "../sensor-charts";
 import { categorize, formatNumber, type CategoryView } from "../summary";
 
 export default function ResultsPage({
@@ -129,6 +131,8 @@ function ResultDetail({ path, onBack }: { path: string; onBack: () => void }) {
             ))}
           </section>
 
+          {result.telemetry && <SensorsCard telemetry={result.telemetry} />}
+
           <details className="card disclosure">
             <summary>
               <Icon name="list_alt" />
@@ -187,6 +191,42 @@ function CategoryRow({ view }: { view: CategoryView }) {
           ))}
         </div>
       )}
+    </details>
+  );
+}
+
+/** Every sensor recorded during the run, plus the standard ones this device doesn't have. */
+function SensorsCard({ telemetry }: { telemetry: NonNullable<RunResult["telemetry"]> }) {
+  const charts = sensorCharts(telemetry.sensors);
+  const missing = missingSensors(telemetry.sensors);
+  const series = new Map(telemetry.series.map((s) => [s.key, s.points]));
+  return (
+    <details className="card disclosure">
+      <summary>
+        <Icon name="monitor_heart" />
+        <span className="title-medium" style={{ flex: 1 }}>
+          Sensors during the run
+        </span>
+        <Icon name="expand_more" />
+      </summary>
+      {charts.length > 0 ? (
+        <div className="grid charts">
+          {charts.map((c) => (
+            <LineChart
+              key={c.key}
+              title={c.title}
+              unit={c.unit}
+              points={series.get(c.key) ?? []}
+              zero={c.zero} minSpan={c.minSpan}
+              empty={c.empty === "No readings yet" ? "No readings during this run" : c.empty}
+              table
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="body-medium muted">This device didn't offer any sensors InferMark can read.</p>
+      )}
+      {missing && <p className="body-small muted">Not available on this device: {missing}.</p>}
     </details>
   );
 }

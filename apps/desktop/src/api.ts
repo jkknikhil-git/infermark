@@ -85,11 +85,21 @@ export type ModuleStatus =
   | { status: "failed"; error: string }
   | { status: "cancelled" };
 
+export interface Series {
+  key: string;
+  label: string;
+  x_unit: string;
+  y_unit: string;
+  points: [number, number][];
+}
+
 export interface ModuleRecord {
   module_id: string;
   status: ModuleStatus;
+  /** When the module started, ms after the run started (absent in older results). */
+  offset_ms?: number;
   duration_ms: number;
-  output: { metrics: Metric[]; series: unknown[]; notes: string[] };
+  output: { metrics: Metric[]; series: Series[]; notes: string[] };
 }
 
 export interface RunResult {
@@ -112,15 +122,35 @@ export interface SensorChannel {
   label: string;
 }
 
+export interface SensorInventory {
+  available: SensorChannel[];
+  missing: SensorChannel[];
+}
+
+export interface SensorReading {
+  source: string;
+  kind: SensorChannel["kind"];
+  /** null when it couldn't be read this time. */
+  value: number | null;
+}
+
+export interface LiveValue {
+  label: string;
+  value: number;
+  unit: string;
+}
+
 export interface Telemetry {
-  sensors: { available: SensorChannel[]; missing: SensorChannel[] };
+  sensors: SensorInventory;
   interval_ms: number;
-  series: { key: string; label: string; x_unit: string; y_unit: string; points: [number, number][] }[];
+  series: Series[];
 }
 
 export type RunEvent =
+  | { type: "run-started"; sensors: SensorInventory }
+  | { type: "sensors"; t: number; readings: SensorReading[] }
   | { type: "module-started"; module_id: string; index: number; total: number }
-  | { type: "module-progress"; module_id: string; progress: { fraction: number; message: string } }
+  | { type: "module-progress"; module_id: string; progress: { fraction: number; message: string; live?: LiveValue } }
   | { type: "module-finished"; record: ModuleRecord };
 
 export interface ResultSummary {

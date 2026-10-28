@@ -7,6 +7,8 @@
 //! when a value couldn't be read, and results record a [`SensorInventory`] so the app can say
 //! "not available on this device" instead of drawing a flat line at zero.
 
+use std::sync::Mutex;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -148,17 +150,12 @@ pub struct SensorInventory {
 impl SensorInventory {
     /// Build from the channels the providers offer. `gpu0`, `gpu1`, ... count as `gpu`.
     pub fn from_channels(available: Vec<SensorChannel>) -> Self {
-        let family = |source: &str| {
-            source
-                .trim_end_matches(|c: char| c.is_ascii_digit())
-                .to_string()
-        };
         let missing = STANDARD_CHANNELS
             .iter()
             .filter(|(src, kind, _)| {
                 !available
                     .iter()
-                    .any(|c| c.kind == *kind && family(&c.source) == *src)
+                    .any(|c| c.kind == *kind && source_family(&c.source) == *src)
             })
             .map(|(src, kind, label)| SensorChannel::new(*src, *kind, *label))
             .collect();
@@ -166,9 +163,56 @@ impl SensorInventory {
     }
 }
 
+/// The latest reading of every channel, shared between the sampler and running modules (the
+/// battery test reads charge and drain from it, the endurance test temperatures).
+#[derive(Debug, Default)]
+pub struct SensorSnapshot {
+    latest: Mutex<Vec<SensorReading>>,
+}
+
+impl SensorSnapshot {
+    pub fn set(&self, readings: Vec<SensorReading>) {
+        *self.latest.lock().unwrap_or_else(|e| e.into_inner()) = readings;
+    }
+
+    pub fn latest(&self) -> Vec<SensorReading> {
+        self.latest
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// The current value for a source family (`gpu` matches `gpu0`) and kind, if readable.
+    pub fn value(&self, family: &str, kind: SensorKind) -> Option<f64> {
+        self.latest()
+            .into_iter()
+            .filter(|r| r.kind == kind && source_family(&r.source) == family)
+            .find_map(|r| r.value)
+    }
+}
+
+/// `gpu0` -> `gpu`; other sources unchanged.
+fn source_family(source: &str) -> &str {
+    source.trim_end_matches(|c: char| c.is_ascii_digit())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn snapshot_finds_values_by_family() {
+        let s = SensorSnapshot::default();
+        assert_eq!(s.value("gpu", SensorKind::Temperature), None);
+        s.set(vec![
+            SensorReading::new("gpu0", SensorKind::Temperature, None),
+            SensorReading::new("gpu1", SensorKind::Temperature, Some(61.0)),
+            SensorReading::new("battery", SensorKind::Power, Some(12.5)),
+        ]);
+        assert_eq!(s.value("gpu", SensorKind::Temperature), Some(61.0));
+        assert_eq!(s.value("battery", SensorKind::Power), Some(12.5));
+        assert_eq!(s.value("cpu", SensorKind::Temperature), None);
+    }
 
     #[test]
     fn inventory_lists_what_is_missing() {

@@ -13,8 +13,9 @@ use std::path::{Path, PathBuf};
 use infermark_engine::{open_backend, BackendKind, EngineConfig};
 use infermark_models::{assess, gguf, Catalog, ModelShape, ModelStore, Verdict};
 use infermark_sdk::{
-    Backend, BenchModule, Direction, GenerateRequest, GenerationStats, LoadOptions, Metric,
-    ModelSpec, ModuleCategory, ModuleDescriptor, ModuleError, ModuleOutput, RunContext, Series,
+    Backend, BenchModule, Direction, GenerateRequest, GenerationStats, LiveValue, LoadOptions,
+    Metric, ModelSpec, ModuleCategory, ModuleDescriptor, ModuleError, ModuleOutput, RunContext,
+    Series,
 };
 
 use crate::settings;
@@ -138,8 +139,13 @@ impl BenchModule for InferencePerf {
         let total = candidates.len();
         let mut failures = Vec::new();
         for (i, c) in candidates.iter().enumerate() {
-            let report = |f: f64, msg: &str| {
-                ctx.report((i as f64 + f) / total as f64, format!("{}: {msg}", c.name))
+            let report = |f: f64, msg: &str, live: Option<LiveValue>| {
+                let fraction = (i as f64 + f) / total as f64;
+                let msg = format!("{}: {msg}", c.name);
+                match live {
+                    Some(v) => ctx.report_live(fraction, msg, v),
+                    None => ctx.report(fraction, msg),
+                }
             };
             let options = LoadOptions {
                 context_size: plan.context,
@@ -341,9 +347,9 @@ fn measure(
     options: &LoadOptions,
     plan: Plan,
     ctx: &RunContext<'_>,
-    report: &dyn Fn(f64, &str),
+    report: &dyn Fn(f64, &str, Option<LiveValue>),
 ) -> Result<Vec<GenerationStats>, ModuleError> {
-    report(0.0, "loading");
+    report(0.0, "loading", None);
     backend
         .load(&c.spec, options)
         .map_err(ModuleError::Failed)?;
@@ -355,7 +361,7 @@ fn measure(
             if ctx.is_cancelled() {
                 return Err(ModuleError::Cancelled);
             }
-            report((w as f64 + 0.5) / (steps + 0.5), "warming up");
+            report((w as f64 + 0.5) / (steps + 0.5), "warming up", None);
             session += 1;
             backend
                 .generate(
@@ -371,6 +377,7 @@ fn measure(
             report(
                 (plan.warmups as f64 + r as f64 + 0.5) / (steps + 0.5),
                 &format!("run {} of {}", r + 1, plan.repeats),
+                None,
             );
             session += 1;
             let stats = backend
@@ -379,6 +386,15 @@ fn measure(
                     &mut |_| {},
                 )
                 .map_err(ModuleError::Failed)?;
+            report(
+                (plan.warmups as f64 + r as f64 + 1.0) / (steps + 0.5),
+                &format!("run {} of {}", r + 1, plan.repeats),
+                Some(LiveValue::new(
+                    format!("{} · Generation", c.name),
+                    round(stats.generation_tokens_per_sec(), 1),
+                    "tok/s",
+                )),
+            );
             samples.push(stats);
         }
         Ok(())
@@ -482,7 +498,7 @@ fn round(v: f64, digits: i32) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use infermark_sdk::{Profile, TokenEvent};
+    use infermark_sdk::{Profile, SensorSnapshot, TokenEvent};
     use std::sync::atomic::AtomicBool;
 
     /// Pretends to be an engine: 100 tok/s prompt, 20 tok/s generation.
@@ -561,6 +577,7 @@ mod tests {
             earlier: &[],
             progress: &|_| {},
             cancel: &cancel,
+            sensors: &SensorSnapshot::default(),
         };
         let c = Candidate {
             key: "fake-1b".into(),
@@ -590,7 +607,7 @@ mod tests {
             &LoadOptions::default(),
             plan,
             &ctx,
-            &|_, _| {},
+            &|_, _, _| {},
         )
         .unwrap();
         assert_eq!(samples.len(), 3);
@@ -621,6 +638,7 @@ mod tests {
             earlier: &[],
             progress: &|_| {},
             cancel: &cancel,
+            sensors: &SensorSnapshot::default(),
         };
         let c = Candidate {
             key: "k".into(),
@@ -650,7 +668,7 @@ mod tests {
             &LoadOptions::default(),
             plan,
             &ctx,
-            &|_, _| {},
+            &|_, _, _| {},
         )
         .unwrap_err();
         assert!(matches!(err, ModuleError::Cancelled));

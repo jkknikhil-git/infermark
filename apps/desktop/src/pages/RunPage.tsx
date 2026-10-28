@@ -1,7 +1,10 @@
 import { useEffect, useState, type Dispatch } from "react";
 import { api, formatDuration, type PlanEntry, type ProfileEntry } from "../api";
+import { LineChart } from "../components/Chart";
 import { Banner, Icon, PageHeader, Progress } from "../components/ui";
 import { overallProgress, type RunAction, type RunState } from "../run-state";
+import { missingSensors, sensorCharts } from "../sensor-charts";
+import { formatNumber } from "../summary";
 
 /**
  * Full-screen run flow (opened from Home). Before a run: pick a profile and see what will run
@@ -76,6 +79,13 @@ export default function RunPage({
             {run.phase === "error" && "Benchmark stopped"}
           </span>
           {running && run.current?.message && <span className="body-medium">{run.current.message}</span>}
+          {running && run.live && (
+            <span className="live-number">
+              <span className="headline-large">{formatNumber(run.live.value)}</span>
+              <span className="unit">{run.live.unit}</span>
+              <span className="body-medium">{run.live.label}</span>
+            </span>
+          )}
           {run.phase === "error" && <span className="body-medium">{run.error}</span>}
           {(running || run.phase === "finished") && <Progress value={overallProgress(run)} />}
           <div className="row">
@@ -110,6 +120,8 @@ export default function RunPage({
           InferMark was in the background during this run, so some results may be lower than this device can really do.
         </Banner>
       )}
+
+      {run.phase !== "idle" && <LiveCharts run={run} />}
 
       {run.phase === "idle" && (
         <section aria-label="Choose a profile" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -200,6 +212,27 @@ export default function RunPage({
         </div>
       )}
     </div>
+  );
+}
+
+/** Speed plus every sensor this device has, updating about once a second. */
+function LiveCharts({ run }: { run: RunState }) {
+  const charts = run.sensors ? sensorCharts(run.sensors) : [];
+  const missing = run.sensors ? missingSensors(run.sensors) : null;
+  if (!run.sensors && run.liveHistory.length === 0) return null;
+  return (
+    <section aria-label="Live sensors" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <h2 className="title-medium">Live</h2>
+      <div className="grid charts">
+        {run.live && (
+          <LineChart title={run.live.label} unit={run.live.unit} points={run.liveHistory} zero empty="Appears after the first measured run" />
+        )}
+        {charts.map((c) => (
+          <LineChart key={c.key} title={c.title} unit={c.unit} points={run.history[c.key] ?? []} zero={c.zero} minSpan={c.minSpan} empty={c.empty} />
+        ))}
+      </div>
+      {missing && <p className="body-small muted">Not available on this device: {missing}.</p>}
+    </section>
   );
 }
 

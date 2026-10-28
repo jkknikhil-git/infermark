@@ -59,6 +59,9 @@ pub enum PlanStatus {
 pub struct ModuleRecord {
     pub module_id: String,
     pub status: ModuleStatus,
+    /// When the module started, in ms since the run started (lines it up with telemetry).
+    #[serde(default)]
+    pub offset_ms: f64,
     pub duration_ms: f64,
     #[serde(default)]
     pub output: ModuleOutput,

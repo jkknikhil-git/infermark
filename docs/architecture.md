@@ -130,3 +130,23 @@ status, iPhones only a coarse thermal state. A sensor that doesn't exist is list
 device" instead of drawing zeros. Desktop providers live in `crates/telemetry`; phones will add
 their own through a Tauri mobile plugin and pass them to `core::run_with_sensors`. Try
 `cargo run -p infermark-telemetry --example sensors` to see what a machine offers.
+
+### Live while it runs
+
+So, a results page after the fact is nice, but you also want to *watch* the thing heat up. Every
+run streams this:
+
+```text
+RunEvent::RunStarted { sensors }       once: what this device has, and what it doesn't
+RunEvent::Sensors { t, readings }      every second, straight from the sampler
+RunEvent::ModuleProgress { progress }  progress.live = the latest number, e.g. 44.3 tok/s
+```
+
+The sampler thread needs a `'static` callback while the run's `on_event` is borrowed, so samples
+go through a channel to a scoped forwarder thread, which closes when the sampler stops. The same
+callback keeps a `SensorSnapshot` with the latest readings, which modules get as `ctx.sensors`.
+That way a battery test reads the same numbers the charts show, on a laptop today and on a
+phone's providers later. Each `ModuleRecord` also stores `offset_ms`, which lines a module up
+with the run's telemetry. In the app, charts have one series and one y-axis each, a sensor that
+exists but can't be read says so instead of drawing zeros, and the standard sensors a device
+lacks are listed under the charts.

@@ -150,6 +150,8 @@ pub struct RunContext<'a> {
     pub earlier: &'a [crate::result::ModuleRecord],
     pub progress: &'a (dyn Fn(Progress) + Send + Sync),
     pub cancel: &'a AtomicBool,
+    /// Latest sensor readings, updated by the run's sampler about once a second.
+    pub sensors: &'a crate::sensor::SensorSnapshot,
 }
 
 impl RunContext<'_> {
@@ -157,6 +159,17 @@ impl RunContext<'_> {
         (self.progress)(Progress {
             fraction: fraction.clamp(0.0, 1.0),
             message: message.into(),
+            live: None,
+        });
+    }
+
+    /// Like [`RunContext::report`], with a number to show big on the live screen
+    /// (e.g. the tok/s of the run that just finished).
+    pub fn report_live(&self, fraction: f64, message: impl Into<String>, live: LiveValue) {
+        (self.progress)(Progress {
+            fraction: fraction.clamp(0.0, 1.0),
+            message: message.into(),
+            live: Some(live),
         });
     }
 
@@ -201,6 +214,26 @@ impl RunContext<'_> {
 pub struct Progress {
     pub fraction: f64,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub live: Option<LiveValue>,
+}
+
+/// A measurement shown while a module runs, e.g. "Generation 44.1 tok/s".
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct LiveValue {
+    pub label: String,
+    pub value: f64,
+    pub unit: String,
+}
+
+impl LiveValue {
+    pub fn new(label: impl Into<String>, value: f64, unit: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            value,
+            unit: unit.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
