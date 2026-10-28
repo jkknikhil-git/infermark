@@ -18,15 +18,16 @@ use std::time::{Duration, Instant};
 
 use infermark_sdk::{SensorChannel, SensorInventory, SensorProvider, SensorReading, Series};
 
-pub use desktop::{BatteryProvider, CpuProvider, NvidiaProvider};
+pub use desktop::{BatteryProvider, CpuProvider, NvidiaProvider, PackagePowerProvider};
 
 /// Default points kept per series; long runs are thinned out evenly beyond this.
 pub const DEFAULT_MAX_POINTS: usize = 1200;
 
-/// Sensors available on this platform (desktop: CPU, NVIDIA GPUs, battery).
+/// Sensors available on this platform (desktop: CPU, CPU package power, NVIDIA GPUs, battery).
 pub fn default_providers() -> Vec<Box<dyn SensorProvider>> {
     let all: Vec<Box<dyn SensorProvider>> = vec![
         Box::new(CpuProvider::new()),
+        Box::new(PackagePowerProvider::new()),
         Box::new(NvidiaProvider::new()),
         Box::new(BatteryProvider::new()),
     ];

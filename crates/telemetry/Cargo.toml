@@ -11,6 +11,9 @@ publish = false
 
 [dependencies]
 infermark-sdk.workspace = true
+infermark-hwprobe.workspace = true
 sysinfo.workspace = true
-starship-battery = "0.12"
 nvml-wrapper = "0.10"
+
+[dev-dependencies]
+tempfile.workspace = true

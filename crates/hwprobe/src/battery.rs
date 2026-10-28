@@ -1,6 +1,35 @@
 use infermark_sdk::{BatteryInfo, PowerSource};
 use starship_battery::units::energy::watt_hour;
+use starship_battery::units::power::watt;
+use starship_battery::units::thermodynamic_temperature::degree_celsius;
 use starship_battery::State;
+
+/// One reading of the first battery, for telemetry. Unrounded.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BatteryReading {
+    pub charge_percent: f64,
+    /// Watts drawn from the battery; `None` while charging, full, or not reported.
+    pub discharge_w: Option<f64>,
+    /// Most laptops don't report this; `None` then.
+    pub temperature_c: Option<f64>,
+}
+
+/// `None` when this device has no battery or it can't be read right now.
+pub fn read_battery() -> Option<BatteryReading> {
+    let manager = starship_battery::Manager::new().ok()?;
+    let b = manager.batteries().ok()?.flatten().next()?;
+    let discharging = matches!(b.state(), State::Discharging);
+    Some(BatteryReading {
+        charge_percent: f64::from(b.state_of_charge().value) * 100.0,
+        discharge_w: discharging
+            .then(|| f64::from(b.energy_rate().get::<watt>()))
+            .filter(|w| w.is_finite() && *w > 0.0),
+        temperature_c: b
+            .temperature()
+            .map(|t| f64::from(t.get::<degree_celsius>()))
+            .filter(|t| t.is_finite()),
+    })
+}
 
 pub fn detect() -> (Option<BatteryInfo>, PowerSource) {
     let battery = first_battery();

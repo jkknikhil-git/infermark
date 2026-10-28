@@ -1896,10 +1896,11 @@ dependencies = [
 name = "infermark-telemetry"
 version = "0.1.0"
 dependencies = [
+ "infermark-hwprobe",
  "infermark-sdk",
  "nvml-wrapper",
- "starship-battery",
  "sysinfo",
+ "tempfile",
 ]
 
 [[package]]

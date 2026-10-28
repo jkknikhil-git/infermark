@@ -131,6 +131,22 @@ device" instead of drawing zeros. Desktop providers live in `crates/telemetry`; 
 their own through a Tauri mobile plugin and pass them to `core::run_with_sensors`. Try
 `cargo run -p infermark-telemetry --example sensors` to see what a machine offers.
 
+The standard channels (`STANDARD_CHANNELS` in `sensor.rs`) are the ones a results screen always
+accounts for, as either a chart or a "not available on this device" line:
+
+| Key | Unit | Desktop source today |
+|---|---|---|
+| `cpu.utilization`, `cpu.clock` | %, MHz | sysinfo, everywhere |
+| `cpu.temperature` | °C | sysinfo where the OS shares it (Linux yes; Windows needs admin, so missing) |
+| `cpu.power` | W | Linux RAPL package zones, only when `energy_uj` is readable (often root-only) |
+| `gpu.utilization`, `gpu.temperature`, `gpu.power` | %, °C, W | NVML on NVIDIA; other GPUs missing for now |
+| `battery.battery-charge`, `battery.power` | %, W | hwprobe's battery reader; drain only while discharging |
+| `battery.temperature` | °C | the same, on the few laptops that report it |
+| `device.thermal-state` | 0-3 | none yet: Android thermal status and iOS `thermalState` come with the phone builds |
+
+`ThermalState::level()` and `from_level()` convert between nominal/fair/serious/critical and the
+0-3 value a reading stores, so phones and desktops share one series format.
+
 ### Live while it runs
 
 So, a results page after the fact is nice, but you also want to *watch* the thing heat up. Every

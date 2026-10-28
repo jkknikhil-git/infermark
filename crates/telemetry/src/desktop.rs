@@ -1,10 +1,12 @@
 //! Sensor providers for Windows, macOS and Linux.
 
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+use infermark_hwprobe::read_battery;
 use infermark_sdk::{SensorChannel, SensorKind, SensorProvider, SensorReading};
 use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureSensor};
 use nvml_wrapper::Nvml;
-use starship_battery::units::power::watt;
-use starship_battery::units::thermodynamic_temperature::degree_celsius;
 use sysinfo::{Components, CpuRefreshKind, System};
 
 /// CPU load and clock from the OS; CPU temperature where the OS exposes it to normal users
@@ -216,7 +218,7 @@ impl BatteryProvider {
         let first = read_battery();
         Self {
             present: first.is_some(),
-            has_temperature: first.is_some_and(|b| b.temperature.is_some()),
+            has_temperature: first.is_some_and(|b| b.temperature_c.is_some()),
         }
     }
 }
@@ -225,28 +227,6 @@ impl Default for BatteryProvider {
     fn default() -> Self {
         Self::new()
     }
-}
-
-struct BatteryNow {
-    charge: f64,
-    /// Watts drawn from the battery; `None` while charging or full.
-    drain: Option<f64>,
-    temperature: Option<f64>,
-}
-
-fn read_battery() -> Option<BatteryNow> {
-    let manager = starship_battery::Manager::new().ok()?;
-    let b = manager.batteries().ok()?.flatten().next()?;
-    let discharging = matches!(b.state(), starship_battery::State::Discharging);
-    Some(BatteryNow {
-        charge: f64::from(b.state_of_charge().value) * 100.0,
-        drain: discharging
-            .then(|| f64::from(b.energy_rate().get::<watt>()))
-            .filter(|w| *w > 0.0),
-        temperature: b
-            .temperature()
-            .map(|t| f64::from(t.get::<degree_celsius>())),
-    })
 }
 
 impl SensorProvider for BatteryProvider {
@@ -281,21 +261,209 @@ impl SensorProvider for BatteryProvider {
             SensorReading::new(
                 "battery",
                 SensorKind::BatteryCharge,
-                now.as_ref().map(|b| b.charge),
+                now.as_ref().map(|b| b.charge_percent),
             ),
             SensorReading::new(
                 "battery",
                 SensorKind::Power,
-                now.as_ref().and_then(|b| b.drain),
+                now.as_ref().and_then(|b| b.discharge_w),
             ),
         ];
         if self.has_temperature {
             out.push(SensorReading::new(
                 "battery",
                 SensorKind::Temperature,
-                now.as_ref().and_then(|b| b.temperature),
+                now.as_ref().and_then(|b| b.temperature_c),
             ));
         }
         out
+    }
+}
+
+/// CPU package power from Linux RAPL (`/sys/class/powercap/intel-rapl:N`, also used by AMD).
+/// Most distributions make `energy_uj` readable by root only, and Windows and macOS have no
+/// equivalent without a driver or an admin tool, so there it is reported missing.
+pub struct PackagePowerProvider {
+    zones: Vec<RaplZone>,
+    /// Energy counters and time of the previous sample.
+    last: Option<(Vec<u64>, Instant)>,
+}
+
+struct RaplZone {
+    energy: PathBuf,
+    /// The counter wraps back to zero after this many µJ.
+    max_range: Option<u64>,
+}
+
+impl PackagePowerProvider {
+    pub fn new() -> Self {
+        Self::from_powercap(Path::new("/sys/class/powercap"))
+    }
+
+    /// Package zones under `root` (`intel-rapl:0`, `intel-rapl:1`, ... whose `name` starts
+    /// with "package") whose energy counter this process can read.
+    fn from_powercap(root: &Path) -> Self {
+        let mut dirs: Vec<PathBuf> = std::fs::read_dir(root)
+            .map(|rd| rd.flatten().map(|e| e.path()).collect())
+            .unwrap_or_default();
+        dirs.sort();
+        let zones = dirs
+            .into_iter()
+            .filter(|d| {
+                let name = d.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                // Top-level zones only; `intel-rapl:0:0` is a sub-zone (cores, uncore, dram).
+                name.starts_with("intel-rapl:") && name.matches(':').count() == 1
+            })
+            .filter(|d| {
+                std::fs::read_to_string(d.join("name"))
+                    .is_ok_and(|n| n.trim().starts_with("package"))
+            })
+            .filter(|d| read_u64(&d.join("energy_uj")).is_some())
+            .map(|d| RaplZone {
+                max_range: read_u64(&d.join("max_energy_range_uj")).filter(|m| *m > 0),
+                energy: d.join("energy_uj"),
+            })
+            .collect();
+        Self { zones, last: None }
+    }
+}
+
+impl Default for PackagePowerProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn read_u64(path: &Path) -> Option<u64> {
+    std::fs::read_to_string(path).ok()?.trim().parse().ok()
+}
+
+/// Average watts between two energy counter readings `secs` apart, allowing for one wrap.
+fn rapl_watts(prev: u64, now: u64, max_range: Option<u64>, secs: f64) -> Option<f64> {
+    if secs <= 0.0 {
+        return None;
+    }
+    let delta = if now >= prev {
+        now - prev
+    } else {
+        max_range?.checked_sub(prev)?.checked_add(now)?
+    };
+    Some(delta as f64 / 1e6 / secs)
+}
+
+impl SensorProvider for PackagePowerProvider {
+    fn id(&self) -> &'static str {
+        "rapl"
+    }
+
+    fn channels(&self) -> Vec<SensorChannel> {
+        if self.zones.is_empty() {
+            return Vec::new();
+        }
+        vec![SensorChannel::new(
+            "cpu",
+            SensorKind::Power,
+            "CPU package power",
+        )]
+    }
+
+    fn sample(&mut self) -> Vec<SensorReading> {
+        if self.zones.is_empty() {
+            return Vec::new();
+        }
+        let at = Instant::now();
+        let now: Option<Vec<u64>> = self.zones.iter().map(|z| read_u64(&z.energy)).collect();
+        // Power needs two readings; the first sample (or one after a failed read) has none.
+        let watts = match (&self.last, &now) {
+            (Some((prev, then)), Some(now)) => {
+                let secs = at.duration_since(*then).as_secs_f64();
+                self.zones
+                    .iter()
+                    .zip(prev.iter().zip(now))
+                    .map(|(z, (p, n))| rapl_watts(*p, *n, z.max_range, secs))
+                    .sum::<Option<f64>>()
+            }
+            _ => None,
+        };
+        self.last = now.map(|n| (n, at));
+        vec![SensorReading::new("cpu", SensorKind::Power, watts)]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    fn zone(root: &Path, dir: &str, name: &str, energy: Option<u64>) {
+        let d = root.join(dir);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("name"), format!("{name}\n")).unwrap();
+        std::fs::write(d.join("max_energy_range_uj"), "262143328850\n").unwrap();
+        if let Some(e) = energy {
+            std::fs::write(d.join("energy_uj"), format!("{e}\n")).unwrap();
+        }
+    }
+
+    #[test]
+    fn rapl_watts_handles_wraparound() {
+        assert_eq!(rapl_watts(1_000_000, 11_000_000, None, 1.0), Some(10.0));
+        assert_eq!(
+            rapl_watts(99_000_000, 1_000_000, Some(100_000_000), 1.0),
+            Some(2.0)
+        );
+        assert_eq!(
+            rapl_watts(90, 10, None, 1.0),
+            None,
+            "can't tell how far it wrapped"
+        );
+        assert_eq!(rapl_watts(0, 10, None, 0.0), None);
+    }
+
+    // Zone directories are named `intel-rapl:0`, which Windows can't create.
+    #[cfg(unix)]
+    #[test]
+    fn package_power_only_from_readable_package_zones() {
+        let dir = tempfile::tempdir().unwrap();
+        zone(dir.path(), "intel-rapl:0", "package-0", Some(5_000_000));
+        zone(dir.path(), "intel-rapl:0:0", "core", Some(1_000_000));
+        zone(dir.path(), "intel-rapl:1", "psys", Some(9_000_000));
+        let mut p = PackagePowerProvider::from_powercap(dir.path());
+        assert_eq!(p.zones.len(), 1);
+        assert_eq!(p.channels().len(), 1);
+        assert_eq!(p.channels()[0].key(), "cpu.power");
+
+        let first = p.sample();
+        assert_eq!(first.len(), 1);
+        assert_eq!(
+            first[0].value, None,
+            "the first sample has no previous reading"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(dir.path().join("intel-rapl:0/energy_uj"), "5500000\n").unwrap();
+        let w = p.sample()[0].value.unwrap();
+        assert!(w > 0.0 && w.is_finite(), "{w}");
+
+        // The counter becomes unreadable (e.g. permissions): no value, not zero.
+        std::fs::remove_file(dir.path().join("intel-rapl:0/energy_uj")).unwrap();
+        assert_eq!(p.sample()[0].value, None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn root_only_counter_means_no_channel() {
+        let dir = tempfile::tempdir().unwrap();
+        // Stands in for a root-only `energy_uj`: the zone exists but can't be read.
+        zone(dir.path(), "intel-rapl:0", "package-0", None);
+        let mut p = PackagePowerProvider::from_powercap(dir.path());
+        assert!(p.channels().is_empty());
+        assert!(p.sample().is_empty());
+    }
+
+    #[test]
+    fn no_powercap_means_no_channel() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = PackagePowerProvider::from_powercap(&dir.path().join("nope"));
+        assert!(p.channels().is_empty());
     }
 }

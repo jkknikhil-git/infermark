@@ -5,6 +5,8 @@ mod battery;
 mod gpu;
 mod nvidia;
 
+pub use battery::{read_battery, BatteryReading};
+
 use infermark_sdk::{
     BatteryInfo, CpuInfo, HardwareInfo, MemoryInfo, OsFamily, OsInfo, PowerSource,
 };

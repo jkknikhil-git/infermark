@@ -126,16 +126,39 @@ pub enum ThermalState {
     Critical = 3,
 }
 
+impl ThermalState {
+    /// The value stored in a [`SensorKind::ThermalState`] reading.
+    pub fn level(self) -> f64 {
+        self as u8 as f64
+    }
+
+    /// Back from a reading's value; `None` for anything that isn't a level 0-3.
+    pub fn from_level(v: f64) -> Option<Self> {
+        if !v.is_finite() {
+            return None;
+        }
+        match v.round() as i64 {
+            0 => Some(Self::Nominal),
+            1 => Some(Self::Fair),
+            2 => Some(Self::Serious),
+            3 => Some(Self::Critical),
+            _ => None,
+        }
+    }
+}
+
 /// The measurements a results screen wants to show, whether or not a device has them.
 pub const STANDARD_CHANNELS: &[(&str, SensorKind, &str)] = &[
     ("cpu", SensorKind::Utilization, "CPU load"),
     ("cpu", SensorKind::Clock, "CPU clock"),
     ("cpu", SensorKind::Temperature, "CPU temperature"),
+    ("cpu", SensorKind::Power, "CPU package power"),
     ("gpu", SensorKind::Utilization, "GPU load"),
     ("gpu", SensorKind::Temperature, "GPU temperature"),
     ("gpu", SensorKind::Power, "GPU power"),
     ("battery", SensorKind::BatteryCharge, "Battery charge"),
     ("battery", SensorKind::Power, "Battery drain"),
+    ("battery", SensorKind::Temperature, "Battery temperature"),
     ("device", SensorKind::ThermalState, "Thermal state"),
 ];
 
@@ -234,6 +257,22 @@ mod tests {
             inv.available.len() + inv.missing.len(),
             STANDARD_CHANNELS.len()
         );
+    }
+
+    #[test]
+    fn thermal_state_round_trips_through_levels() {
+        for s in [
+            ThermalState::Nominal,
+            ThermalState::Fair,
+            ThermalState::Serious,
+            ThermalState::Critical,
+        ] {
+            assert_eq!(ThermalState::from_level(s.level()), Some(s));
+        }
+        assert_eq!(ThermalState::from_level(4.0), None);
+        assert_eq!(ThermalState::from_level(-1.0), None);
+        assert_eq!(ThermalState::from_level(f64::NAN), None);
+        assert!(ThermalState::Serious > ThermalState::Fair);
     }
 
     #[test]
