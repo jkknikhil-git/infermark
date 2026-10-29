@@ -18,7 +18,7 @@ use infermark_sdk::{
 
 use super::model_run::{
     context_for, duration_setting, generation_loop, load_options, median, minutes_label, open,
-    round, select_models, Loop, LoopPlan,
+    round, select_models, threads_label, Loop, LoopPlan,
 };
 
 pub struct SustainedLoad;
@@ -69,10 +69,11 @@ impl BenchModule for SustainedLoad {
         let total = plan.duration.as_secs_f64();
         let started = Instant::now();
         ctx.report(0.0, format!("{}: loading", c.name));
+        let options = load_options(ctx, context);
         let loops = generation_loop(
             backend.as_mut(),
             &c,
-            &load_options(ctx, context),
+            &options,
             plan,
             ctx,
             &mut |l: &Loop| {
@@ -97,7 +98,8 @@ impl BenchModule for SustainedLoad {
         let after = Thermals::read(ctx.sensors);
 
         let burst = ctx.earlier_metric("inference-perf", &format!("{}/gen_tps", c.key));
-        summarize(&mut out, &c.name, &loops, burst);
+        let ran = format!("{} on {}", c.name, threads_label(&options));
+        summarize(&mut out, &ran, &loops, burst);
         out.notes.extend(before.change_note(&after));
         Ok(out)
     }

@@ -14,6 +14,7 @@ export function LineChart({
   empty = "Waiting for the first reading…",
   height = 112,
   table = false,
+  format = formatNumber,
 }: {
   title: string;
   unit: string;
@@ -28,6 +29,8 @@ export function LineChart({
   height?: number;
   /** Offer the values as a table (results pages). */
   table?: boolean;
+  /** How the headline, summary and table show a value. */
+  format?: (value: number) => string;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const width = useWidth(box);
@@ -83,7 +86,7 @@ export function LineChart({
   };
 
   const summary = scale
-    ? `${title}: latest ${formatNumber(latest[1])} ${unit}, range ${formatNumber(Math.min(...points.map((p) => p[1])))} to ${formatNumber(Math.max(...points.map((p) => p[1])))} ${unit} over ${formatSeconds(scale.x1 - scale.x0)}.`
+    ? `${title}: latest ${format(latest[1])} ${unit}, range ${format(Math.min(...points.map((p) => p[1])))} to ${format(Math.max(...points.map((p) => p[1])))} ${unit} over ${formatSeconds(scale.x1 - scale.x0)}.`
     : `${title}: ${empty}`;
 
   return (
@@ -92,8 +95,8 @@ export function LineChart({
         <span className="label-large">{title}</span>
         {shown && (
           <span className="chart-value">
-            {formatNumber(shown[1])}
-            <span className="unit">{unit}</span>
+            {format(shown[1])}
+            {unit && <span className="unit">{unit}</span>}
             {hover !== null && <span className="body-small muted"> at {formatSeconds(shown[0])}</span>}
           </span>
         )}
@@ -149,7 +152,7 @@ export function LineChart({
               {thin(points, 60).map(([x, y]) => (
                 <tr key={x}>
                   <td>{formatSeconds(x)}</td>
-                  <td>{formatNumber(y)}</td>
+                  <td>{format(y)}</td>
                 </tr>
               ))}
             </tbody>

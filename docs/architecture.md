@@ -134,6 +134,11 @@ llama.cpp get? It runs the smallest model on the CPU alone (GPU off) with the fa
 than cores), then reports the fastest. More isn't automatically better here. Generation is
 limited by memory bandwidth, and little cores can hold the big ones back.
 
+That's why phones default to their fast cores when a profile doesn't set `run.threads`
+(`model_run::default_threads`): on a Dimensity 8350, with a 493-token prompt, the sweep measured
+21.8 tok/s on the 4 fast cores against 16.4 on all 8. Desktops keep the engine's own default, one
+thread per physical core. Every speed note says how many threads it ran on.
+
 ## Telemetry
 
 ```text

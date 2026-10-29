@@ -669,6 +669,15 @@ details > summary:focus-visible { outline: 3px solid var(--md-sys-color-primary)
   /* Bottom navigation bar stays put and clears the gesture bar / home indicator. */
   .rail { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
   .page { padding-top: calc(20px + env(safe-area-inset-top)); }
+  /* Phones draw apps edge to edge: keep scrolled content from showing through the status bar. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: env(safe-area-inset-top);
+    background: var(--md-sys-color-surface);
+    z-index: 20;
+  }
   /* Full-screen flows (the run screen) hide the navigation bar, like a phone app. */
   .app.flow .rail { display: none; }
   .hero-actions .btn.large { flex: 1 1 100%; }

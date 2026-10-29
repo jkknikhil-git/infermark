@@ -13,7 +13,12 @@ export interface SensorChart {
   minSpan: number;
   /** Shown when the channel exists but produced no readings. */
   empty: string;
+  /** Words for the headline value instead of a number (thermal state). */
+  format?: (value: number) => string;
 }
+
+const THERMAL = ["Nominal", "Fair", "Serious", "Critical"];
+export const thermalLabel = (v: number) => THERMAL[Math.round(v)] ?? String(v);
 
 const ORDER: SensorChannel["kind"][] = ["temperature", "thermal-state", "utilization", "power", "clock", "battery-charge", "memory-used"];
 const MIN_SPAN: Record<SensorChannel["kind"], number> = {
@@ -27,7 +32,7 @@ const MIN_SPAN: Record<SensorChannel["kind"], number> = {
 };
 const UNITS: Record<SensorChannel["kind"], string> = {
   temperature: "°C",
-  "thermal-state": "level",
+  "thermal-state": "",
   utilization: "%",
   power: "W",
   clock: "MHz",
@@ -54,6 +59,7 @@ export function sensorCharts(inventory: SensorInventory): SensorChart[] {
         c.source === "battery" && c.kind === "power"
           ? "Only measured while running on battery"
           : "No readings yet",
+      format: c.kind === "thermal-state" ? thermalLabel : undefined,
     }));
 }
 

@@ -14,7 +14,8 @@ use infermark_sdk::{
 };
 
 use super::model_run::{
-    context_for, load_options, median, open, request, round, select_models, Candidate,
+    context_for, load_options, median, open, request, round, select_models, threads_label,
+    Candidate,
 };
 
 pub struct InferencePerf;
@@ -73,7 +74,7 @@ impl BenchModule for InferencePerf {
             };
             let options = load_options(ctx, plan.context);
             match measure(backend.as_mut(), c, &options, plan, ctx, &report) {
-                Ok(samples) => push_results(&mut out, c, &samples),
+                Ok(samples) => push_results(&mut out, c, &samples, &threads_label(&options)),
                 Err(ModuleError::Cancelled) => return Err(ModuleError::Cancelled),
                 Err(e) => {
                     out.notes.push(format!("{} failed: {e}", c.name));
@@ -150,7 +151,7 @@ fn measure(
     result.map(|_| samples)
 }
 
-fn push_results(out: &mut ModuleOutput, c: &Candidate, samples: &[GenerationStats]) {
+fn push_results(out: &mut ModuleOutput, c: &Candidate, samples: &[GenerationStats], threads: &str) {
     let pick =
         |f: &dyn Fn(&GenerationStats) -> f64| -> Vec<f64> { samples.iter().map(f).collect() };
     let gen = pick(&|s| s.generation_tokens_per_sec());
@@ -203,7 +204,7 @@ fn push_results(out: &mut ModuleOutput, c: &Candidate, samples: &[GenerationStat
     let prompt_tokens = samples.first().map(|s| s.prompt_tokens).unwrap_or(0);
     let out_tokens = samples.first().map(|s| s.output_tokens).unwrap_or(0);
     out.notes.push(format!(
-        "{}: {prompt_tokens}-token prompt, {out_tokens} tokens generated, median of {} runs (generation spread {:.1}-{:.1} tok/s).",
+        "{}: {prompt_tokens}-token prompt, {out_tokens} tokens generated on {threads}, median of {} runs (generation spread {:.1}-{:.1} tok/s).",
         c.name,
         samples.len(),
         gen.iter().cloned().fold(f64::INFINITY, f64::min),
@@ -243,7 +244,7 @@ mod tests {
         assert!(!backend.loaded, "model is unloaded afterwards");
 
         let mut out = ModuleOutput::default();
-        push_results(&mut out, &c, &samples);
+        push_results(&mut out, &c, &samples, "4 threads");
         let get = |k: &str| out.metrics.iter().find(|m| m.key == k).unwrap().value;
         assert_eq!(get("fake-1b/gen_tps"), 20.0);
         assert_eq!(get("fake-1b/prompt_tps"), 100.0);

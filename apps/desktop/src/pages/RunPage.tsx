@@ -233,7 +233,7 @@ function LiveCharts({ run }: { run: RunState }) {
           <LineChart title={run.live.label} unit={run.live.unit} points={run.liveHistory} zero empty="Appears after the first measured run" />
         )}
         {charts.map((c) => (
-          <LineChart key={c.key} title={c.title} unit={c.unit} points={run.history[c.key] ?? []} zero={c.zero} minSpan={c.minSpan} empty={c.empty} />
+          <LineChart key={c.key} title={c.title} unit={c.unit} points={run.history[c.key] ?? []} zero={c.zero} minSpan={c.minSpan} empty={c.empty} format={c.format} />
         ))}
       </div>
       {missing && <p className="body-small muted">Not available on this device: {missing}.</p>}

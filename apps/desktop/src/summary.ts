@@ -86,6 +86,7 @@ export interface CategoryChart {
   points: [number, number][];
   zero: boolean;
   minSpan: number;
+  format?: (value: number) => string;
 }
 
 /** Metrics like `qwen3-0.6b-q4/gen_tps` labelled "Qwen3 0.6B · Generation" are grouped by model. */
@@ -199,7 +200,7 @@ function chartsFor(category: CategoryId, records: ModuleRecord[], result: RunRes
       const spec = specs.get(key);
       const points = series?.points.filter(([t]) => t >= from && t <= to).map(([t, v]) => [t - from, v] as [number, number]);
       if (!series || !spec || !points || points.length < 2) continue;
-      charts.push({ title: spec.title, unit: spec.unit, points, zero: spec.zero, minSpan: spec.minSpan });
+      charts.push({ title: spec.title, unit: spec.unit, points, zero: spec.zero, minSpan: spec.minSpan, format: spec.format });
       break;
     }
   }

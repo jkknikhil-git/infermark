@@ -6,7 +6,10 @@ use std::time::{Duration, Instant};
 
 use infermark_engine::{open_backend, BackendKind, EngineConfig};
 use infermark_models::{assess, gguf, Catalog, ModelShape, ModelStore, Verdict};
-use infermark_sdk::{Backend, GenerateRequest, LoadOptions, ModelSpec, ModuleError, RunContext};
+use infermark_sdk::{
+    Backend, GenerateRequest, HardwareInfo, LoadOptions, ModelSpec, ModuleError, OsFamily,
+    RunContext,
+};
 
 use crate::settings;
 
@@ -123,9 +126,29 @@ pub(super) fn context_for(prompt_tokens: u32, gen_tokens: u32) -> u32 {
 pub(super) fn load_options(ctx: &RunContext<'_>, context: u32) -> LoadOptions {
     LoadOptions {
         context_size: context,
-        threads: ctx.run.threads,
+        threads: ctx.run.threads.or_else(|| default_threads(ctx.hardware)),
         gpu_layers: ctx.run.gpu_layers,
         seed: ctx.run.seed,
+    }
+}
+
+/// Threads when the profile doesn't set them. Phones get their fast cores only: on a
+/// Dimensity 8350 (1 + 3 fast, 4 little) the thread sweep measured 21.8 tok/s with 4 threads
+/// and 16.4 with all 8 (493-token prompt). Elsewhere the engine keeps its own default (one per
+/// physical core).
+pub(super) fn default_threads(hw: &HardwareInfo) -> Option<u32> {
+    match hw.os.family {
+        OsFamily::Android | OsFamily::Ios => hw.cpu.fast_cores(),
+        _ => None,
+    }
+}
+
+/// "4 threads", or the engine's default when neither the profile nor the device picked one.
+pub(super) fn threads_label(options: &LoadOptions) -> String {
+    match options.threads {
+        Some(1) => "1 thread".into(),
+        Some(n) => format!("{n} threads"),
+        None => "the engine's default threads".into(),
     }
 }
 
@@ -568,6 +591,33 @@ mod tests {
         assert!((480..640).contains(&approx_tokens), "{approx_tokens}");
         assert_ne!(perf_prompt(512, 1), perf_prompt(512, 2));
         assert_eq!(perf_prompt(512, 3), perf_prompt(512, 3));
+    }
+
+    #[test]
+    fn phones_default_to_their_fast_cores() {
+        let mut hw = hardware();
+        assert_eq!(default_threads(&hw), None);
+        hw.cpu.clusters = [(1, 3350), (3, 3200), (4, 2200)]
+            .iter()
+            .map(|&(cores, mhz)| infermark_sdk::CpuCluster {
+                physical_cores: cores,
+                logical_cores: cores,
+                max_mhz: Some(mhz),
+            })
+            .collect();
+        assert_eq!(
+            default_threads(&hw),
+            None,
+            "desktops keep the engine default"
+        );
+        hw.os.family = OsFamily::Android;
+        assert_eq!(default_threads(&hw), Some(4));
+        hw.cpu.clusters.truncate(1);
+        assert_eq!(
+            default_threads(&hw),
+            None,
+            "one kind of core: engine default"
+        );
     }
 
     #[test]

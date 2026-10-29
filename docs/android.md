@@ -7,6 +7,33 @@ build yourself or the one CI keeps for a week after every push to `main`.
 The phone we're testing on is a motorola edge 60 pro (Dimensity 8350, 8 GB RAM, Android 17).
 That's one phone, so treat anything here as "works on that one" until more people try theirs.
 
+## What we measured
+
+So, first of all, it works: the Standard profile ran start to finish on that phone, plugged in,
+in about 6 minutes. With Qwen3 0.6B (Q4_K_M) on the CPU, a 493-token prompt and 128 tokens out:
+
+| Test | Result |
+|---|---|
+| Memory bandwidth (copy / triad) | 24.7–27.1 / 27.7–27.9 GB/s |
+| Generation, 4 threads (fast cores) | 21.8 tok/s |
+| Generation, 8 threads (all cores) | 16.4 tok/s |
+| Prompt processing, 4 / 8 threads | 140 / 142 tok/s |
+| Time to first token | 3.6 s |
+| Load time | 1.3–1.45 s |
+| Endurance, 5 minutes (8 threads, shorter prompts) | peak 25.3, last quarter 20.5 tok/s (81% stability) |
+| Battery temperature during the endurance run | 33.8 → 37.4 °C, thermal status "nominal" throughout |
+
+Here's the thing about threads: generating on all eight cores was a quarter slower than on the
+four fast ones, because the 2.2 GHz little cores hold the rest back. Reading the prompt didn't
+care either way. So on phones InferMark now defaults to the fast cores, and a profile's
+`run.threads` still overrides it. With that default the Quick profile went from 16.7 to
+19.2 tok/s on the same phone.
+
+Prompt length matters more than you might think on a phone, too. With a 128-token prompt the
+same sweep measured 33.5 tok/s on 4 threads, against 21.8 with 493 tokens. So compare results
+from the same profile, not across profiles. The endurance row ran before the thread change, so
+take its absolute numbers loosely. The 19% drop over 5 minutes is the part worth keeping in mind.
+
 ## What's different on a phone
 
 Here's the thing: a phone app can do far less than a desktop program, and InferMark has to work

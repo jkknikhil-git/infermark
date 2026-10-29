@@ -178,7 +178,7 @@ function CategoryRow({ view }: { view: CategoryView }) {
           {view.charts.length > 0 && (
             <div className="grid charts">
               {view.charts.map((c) => (
-                <LineChart key={c.title} title={c.title} unit={c.unit} points={c.points} zero={c.zero} minSpan={c.minSpan} table />
+                <LineChart key={c.title} title={c.title} unit={c.unit} points={c.points} zero={c.zero} minSpan={c.minSpan} format={c.format} table />
               ))}
             </div>
           )}
@@ -227,6 +227,7 @@ function SensorsCard({ telemetry }: { telemetry: NonNullable<RunResult["telemetr
               unit={c.unit}
               points={series.get(c.key) ?? []}
               zero={c.zero} minSpan={c.minSpan}
+              format={c.format}
               empty={c.empty === "No readings yet" ? "No readings during this run" : c.empty}
               table
             />

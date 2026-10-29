@@ -140,15 +140,20 @@ export default function ModelsPage({ onOpenSettings }: { onOpenSettings: () => v
             )}
           </>
         )}
-        <hr className="divider" />
-        <dl className="kv body-medium">
-          <dt>Ollama</dt>
-          <dd>
-            {engine?.status.ollama
-              ? `${engine.status.ollama.version} running · ${engine.status.ollama.models.length} models`
-              : "Not running (optional)"}
-          </dd>
-        </dl>
+        {/* Phones only have the built-in engine; Ollama can't run there. */}
+        {!(builtIn && !llama && !engine?.status.ollama) && (
+          <>
+            <hr className="divider" />
+            <dl className="kv body-medium">
+              <dt>Ollama</dt>
+              <dd>
+                {engine?.status.ollama
+                  ? `${engine.status.ollama.version} running · ${engine.status.ollama.models.length} models`
+                  : "Not running (optional)"}
+              </dd>
+            </dl>
+          </>
+        )}
       </section>
 
       {view && (

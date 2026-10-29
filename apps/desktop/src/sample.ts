@@ -251,7 +251,7 @@ const sampleResult: RunResult = {
           { key: "tokens", label: "Tokens written", value: 12800, unit: "", direction: "neutral" },
         ],
         series: [{ key: "tps", label: "Speed over time", x_unit: "s", y_unit: "tok/s", points: sustainedSpeeds }],
-        notes: ["Qwen3 0.6B: 100 generations over 5.1 min, peak 44.1 tok/s, last quarter 38.2 tok/s."],
+        notes: ["Qwen3 0.6B on the engine's default threads: 100 generations over 5.1 min, peak 44.1 tok/s, last quarter 38.2 tok/s."],
       },
     },
     {
