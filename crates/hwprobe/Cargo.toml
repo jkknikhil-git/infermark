@@ -24,7 +24,7 @@ nvml-wrapper = "0.10"
 
 [target.'cfg(windows)'.dependencies]
 wmi = "0.14"
-windows = { version = "0.58", features = [
+windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dxgi",
     "Win32_System_Power",
