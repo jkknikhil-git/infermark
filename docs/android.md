@@ -34,6 +34,27 @@ same sweep measured 33.5 tok/s on 4 threads, against 21.8 with 493 tokens. So co
 from the same profile, not across profiles. The endurance row ran before the thread change, so
 take its absolute numbers loosely. The 19% drop over 5 minutes is the part worth keeping in mind.
 
+### On battery
+
+Then we unplugged it and ran the battery profile: 15 minutes of nonstop generation, then
+15 minutes of endurance, same model, 4 threads.
+
+| Test | Result |
+|---|---|
+| Charge used in 15 minutes | 5% (93 → 88%) |
+| Average drain | 4.4 W |
+| Tokens per Wh | 17,718 |
+| Battery per 10k tokens | 2.5% |
+| Nonstop generation on a full battery | about 5 hours |
+| Endurance, 15 minutes | peak 28.9, last quarter 26.5 tok/s (91% stability) |
+| Battery temperature | 33.9 → 39.9 °C, thermal status "nominal" throughout |
+
+And look, the two battery numbers agree with each other: 5% of a 6,000 mAh battery over a
+quarter of an hour works out to about 4.6 W, against the 4.4 W read from the battery's own
+current and voltage. That matters, because phone makers don't agree on which sign the current
+has, so it's the first thing to check on a new phone. What we don't know yet is how much of
+that 4.4 W is the screen, which stays on during a run.
+
 ## What's different on a phone
 
 Here's the thing: a phone app can do far less than a desktop program, and InferMark has to work

@@ -4,7 +4,7 @@ import { LineChart } from "../components/Chart";
 import { Banner, Checks, Icon, PageHeader, Progress } from "../components/ui";
 import { usePreflight } from "../preflight";
 import { overallProgress, type RunAction, type RunState } from "../run-state";
-import { missingSensors, sensorCharts } from "../sensor-charts";
+import { missingSensors, sensorCharts, speedHealth } from "../sensor-charts";
 import { formatNumber } from "../summary";
 
 /**
@@ -220,9 +220,21 @@ export default function RunPage({
   );
 }
 
+// The OS family sets the battery-drain limits (phone vs laptop); probed once per app start.
+let osFamily: Promise<string | null> | null = null;
+function useOsFamily() {
+  const [os, setOs] = useState<string | null>(null);
+  useEffect(() => {
+    osFamily ??= api.probe().then((h) => h.os.family, () => null);
+    osFamily.then(setOs);
+  }, []);
+  return os;
+}
+
 /** Speed plus every sensor this device has, updating about once a second. */
 function LiveCharts({ run }: { run: RunState }) {
-  const charts = run.sensors ? sensorCharts(run.sensors) : [];
+  const os = useOsFamily();
+  const charts = run.sensors ? sensorCharts(run.sensors, os) : [];
   const missing = run.sensors ? missingSensors(run.sensors) : null;
   if (!run.sensors && run.liveHistory.length === 0) return null;
   return (
@@ -230,10 +242,17 @@ function LiveCharts({ run }: { run: RunState }) {
       <h2 className="title-medium">Live</h2>
       <div className="grid charts">
         {run.live && (
-          <LineChart title={run.live.label} unit={run.live.unit} points={run.liveHistory} zero empty="Appears after the first measured run" />
+          <LineChart
+            title={run.live.label}
+            unit={run.live.unit}
+            points={run.liveHistory}
+            zero
+            empty="Appears after the first measured run"
+            health={run.live.unit === "tok/s" ? speedHealth(run.liveHistory) : undefined}
+          />
         )}
         {charts.map((c) => (
-          <LineChart key={c.key} title={c.title} unit={c.unit} points={run.history[c.key] ?? []} zero={c.zero} minSpan={c.minSpan} empty={c.empty} format={c.format} />
+          <LineChart key={c.key} title={c.title} unit={c.unit} points={run.history[c.key] ?? []} zero={c.zero} minSpan={c.minSpan} empty={c.empty} format={c.format} health={c.health} />
         ))}
       </div>
       {missing && <p className="body-small muted">Not available on this device: {missing}.</p>}

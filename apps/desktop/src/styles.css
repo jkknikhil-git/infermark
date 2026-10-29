@@ -32,6 +32,12 @@
   --rail-width: 88px;
   /* Chart line: validated for contrast and chroma on the light and dark surfaces. */
   --chart-line: #2a78d6;
+  /* Status (good -> critical): reserved for good/bad readings, the same in light and dark, and
+     always shown with an icon and a word. */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
   --ease: cubic-bezier(0.2, 0, 0, 1);
 
   font-family: "Roboto", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -634,6 +640,21 @@ code, .mono { font-family: "Roboto Mono", ui-monospace, Consolas, monospace; fon
 .chart-tick { fill: var(--md-sys-color-on-surface-variant); font-size: 11px; font-variant-numeric: tabular-nums; }
 .chart-line { fill: none; stroke: var(--chart-line); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .chart-area { fill: var(--chart-line); opacity: 0.1; }
+.chart-area.health { opacity: 1; }
+.chart-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.chart-status.good .icon { color: var(--status-good); }
+.chart-status.warning .icon { color: var(--status-warning); }
+.chart-status.bad .icon { color: var(--status-critical); }
 .chart-crosshair { stroke: var(--md-sys-color-on-surface-variant); stroke-width: 1; }
 .chart-dot { fill: var(--chart-line); stroke: var(--md-sys-color-surface-container-low); stroke-width: 2; }
 .chart-table table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }

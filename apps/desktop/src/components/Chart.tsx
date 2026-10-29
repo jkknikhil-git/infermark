@@ -1,9 +1,33 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { badness, statusOf, type Health, type HealthLevel } from "../sensor-charts";
 import { formatNumber } from "../summary";
+import { Icon } from "./ui";
+
+const STATUS_ICON: Record<HealthLevel, string> = { good: "check_circle", warning: "warning", bad: "error" };
+
+/** good -> warning -> serious -> critical, blended in OKLab, for a badness of 0..1. */
+function statusColor(t: number) {
+  const stops: [number, string][] = [
+    [0, "--status-good"],
+    [0.5, "--status-warning"],
+    [0.75, "--status-serious"],
+    [1, "--status-critical"],
+  ];
+  const i = Math.max(1, stops.findIndex(([at]) => at >= t));
+  const [a, from] = stops[i - 1];
+  const [b, to] = stops[i];
+  const mix = Math.round(((t - a) / (b - a)) * 100);
+  return `color-mix(in oklab, var(${from}), var(${to}) ${mix}%)`;
+}
 
 /**
  * One series over time: a 2 px line with a light wash, hairline grid, the latest value in the
  * header and a crosshair tooltip. Charts never share a y-axis: two measures get two charts.
+ *
+ * With `health`, each moment of the line and wash takes the status color of that moment's
+ * reading: green at or past the `good` limit, red at or past `bad`, blended in between. So a
+ * throttling run fades from green to red left to right. The header names the band ("Warm")
+ * with an icon, so the color never carries the meaning alone.
  */
 export function LineChart({
   title,
@@ -15,6 +39,7 @@ export function LineChart({
   height = 112,
   table = false,
   format = formatNumber,
+  health,
 }: {
   title: string;
   unit: string;
@@ -31,7 +56,10 @@ export function LineChart({
   table?: boolean;
   /** How the headline, summary and table show a value. */
   format?: (value: number) => string;
+  /** Good and bad limits; without them the chart stays neutral blue. */
+  health?: Health;
 }) {
+  const gradient = `health-${useId().replace(/:/g, "")}`;
   const box = useRef<HTMLDivElement>(null);
   const width = useWidth(box);
   const [hover, setHover] = useState<number | null>(null);
@@ -66,6 +94,11 @@ export function LineChart({
 
   const latest = points[points.length - 1];
   const shown = hover !== null ? points[hover] : latest;
+  const status = health && shown ? statusOf(shown[1], health) : null;
+  const say = (v: number) => {
+    const word = health ? statusOf(v, health).word : null;
+    return word ? `${format(v)} ${unit} (${word.toLowerCase()})` : `${format(v)} ${unit}`;
+  };
 
   const path = scale ? points.map((p, i) => `${i ? "L" : "M"}${scale.x(p[0]).toFixed(1)},${scale.y(p[1]).toFixed(1)}`).join("") : "";
   const area = scale && points.length > 1 ? `${path}L${scale.x(latest[0]).toFixed(1)},${pad.top + plotH}L${scale.x(points[0][0]).toFixed(1)},${pad.top + plotH}Z` : "";
@@ -86,7 +119,7 @@ export function LineChart({
   };
 
   const summary = scale
-    ? `${title}: latest ${format(latest[1])} ${unit}, range ${format(Math.min(...points.map((p) => p[1])))} to ${format(Math.max(...points.map((p) => p[1])))} ${unit} over ${formatSeconds(scale.x1 - scale.x0)}.`
+    ? `${title}: latest ${say(latest[1])}, range ${format(Math.min(...points.map((p) => p[1])))} to ${format(Math.max(...points.map((p) => p[1])))} ${unit} over ${formatSeconds(scale.x1 - scale.x0)}.`
     : `${title}: ${empty}`;
 
   return (
@@ -97,6 +130,12 @@ export function LineChart({
           <span className="chart-value">
             {format(shown[1])}
             {unit && <span className="unit">{unit}</span>}
+            {status && (
+              <span className={`chart-status ${status.level}`}>
+                <Icon name={STATUS_ICON[status.level]} filled small />
+                {status.word}
+              </span>
+            )}
             {hover !== null && <span className="body-small muted"> at {formatSeconds(shown[0])}</span>}
           </span>
         )}
@@ -115,6 +154,23 @@ export function LineChart({
             onBlur={() => setHover(null)}
             onKeyDown={key}
           >
+            {health && (
+              <defs>
+                <linearGradient id={gradient} gradientUnits="userSpaceOnUse" x1={pad.left} x2={pad.left + plotW} y1={0} y2={0}>
+                  {colorStops(points, health).map(([x, t]) => (
+                    <stop key={x} offset={(scale.x(x) - pad.left) / plotW} stopColor={statusColor(t)} />
+                  ))}
+                </linearGradient>
+                {/* Brightest just under the line, fading toward the baseline. */}
+                <linearGradient id={`${gradient}-fade`} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={pad.top} y2={pad.top + plotH}>
+                  <stop offset="0" stopColor="#fff" stopOpacity={0.75} />
+                  <stop offset="1" stopColor="#fff" stopOpacity={0.12} />
+                </linearGradient>
+                <mask id={`${gradient}-mask`}>
+                  <rect x={pad.left} y={pad.top} width={plotW} height={plotH} fill={`url(#${gradient}-fade)`} />
+                </mask>
+              </defs>
+            )}
             {[scale.y0, scale.y1].map((v) => (
               <g key={v}>
                 <line className="chart-grid" x1={pad.left} x2={pad.left + plotW} y1={scale.y(v)} y2={scale.y(v)} />
@@ -129,12 +185,20 @@ export function LineChart({
             <text className="chart-tick" x={pad.left + plotW} y={height - 4} textAnchor="end">
               {formatSeconds(scale.x1)}
             </text>
-            {area && <path className="chart-area" d={area} />}
-            <path className="chart-line" d={path} />
+            {area && <path className={health ? "chart-area health" : "chart-area"} d={area} style={health ? { fill: `url(#${gradient})`, mask: `url(#${gradient}-mask)` } : undefined} />}
+            <path className="chart-line" d={path} style={health ? { stroke: `url(#${gradient})` } : undefined} />
             {hover !== null && (
               <line className="chart-crosshair" x1={scale.x(points[hover][0])} x2={scale.x(points[hover][0])} y1={pad.top} y2={pad.top + plotH} />
             )}
-            {shown && <circle className="chart-dot" cx={scale.x(shown[0])} cy={scale.y(shown[1])} r={4} />}
+            {shown && (
+              <circle
+                className="chart-dot"
+                cx={scale.x(shown[0])}
+                cy={scale.y(shown[1])}
+                r={4}
+                style={status ? { fill: `var(--status-${status.level === "good" ? "good" : status.level === "warning" ? "warning" : "critical"})` } : undefined}
+              />
+            )}
           </svg>
         )}
       </div>
@@ -145,7 +209,8 @@ export function LineChart({
             <thead>
               <tr>
                 <th>Time</th>
-                <th>{unit}</th>
+                <th>{unit || title}</th>
+                {health?.words && <th>Status</th>}
               </tr>
             </thead>
             <tbody>
@@ -153,6 +218,7 @@ export function LineChart({
                 <tr key={x}>
                   <td>{formatSeconds(x)}</td>
                   <td>{format(y)}</td>
+                  {health?.words && <td>{statusOf(y, health).word}</td>}
                 </tr>
               ))}
             </tbody>
@@ -207,6 +273,19 @@ export function formatSeconds(s: number) {
 }
 
 /** At most `max` evenly spaced points, always keeping the last one. */
+/**
+ * Gradient stops along time: each reading's badness, averaged with its neighbours so a value
+ * hovering at a limit doesn't stripe the chart. The headline and table stay exact.
+ */
+function colorStops(points: [number, number][], health: Health): [number, number][] {
+  const few = thin(points, 64);
+  const raw = few.map(([, y]) => badness(y, health));
+  return few.map(([x], i) => {
+    const near = raw.slice(Math.max(0, i - 2), i + 3);
+    return [x, near.reduce((a, b) => a + b, 0) / near.length];
+  });
+}
+
 function thin(points: [number, number][], max: number) {
   if (points.length <= max) return points;
   const step = points.length / max;

@@ -196,6 +196,16 @@ with the run's telemetry. In the app, charts have one series and one y-axis each
 exists but can't be read says so instead of drawing zeros, and the standard sensors a device
 lacks are listed under the charts.
 
+Charts with a clear better and worse get colored by health: each moment takes the status color
+of its reading, green at or past the good limit, red at or past the bad one, so a run that heats
+up or throttles fades from green to red left to right. The limits are fixed per sensor
+(`HEALTH` in `apps/desktop/src/sensor-charts.ts`): battery 35 / 45 °C, CPU and GPU 60 / 90 °C,
+battery charge 50 / 15 %, Android's thermal status, and battery drain by device class (phones
+3 / 8 W, laptops 15 / 40 W). Speed is judged against its own peak (90 % / 60 %), because there's
+no universal good tok/s. Every colored chart also names its band ("Warm", "Throttled") with an
+icon, so the meaning never depends on telling red from green. CPU load, clock and memory have no
+good direction and stay blue.
+
 ## Before a run
 
 So, first of all, a benchmark is only as fair as the moment you press Start. `preflight::check`

@@ -133,7 +133,7 @@ function ResultDetail({ path, onBack }: { path: string; onBack: () => void }) {
             ))}
           </section>
 
-          {result.telemetry && <SensorsCard telemetry={result.telemetry} />}
+          {result.telemetry && <SensorsCard telemetry={result.telemetry} os={result.hardware.os.family} />}
 
           <details className="card disclosure">
             <summary>
@@ -178,7 +178,7 @@ function CategoryRow({ view }: { view: CategoryView }) {
           {view.charts.length > 0 && (
             <div className="grid charts">
               {view.charts.map((c) => (
-                <LineChart key={c.title} title={c.title} unit={c.unit} points={c.points} zero={c.zero} minSpan={c.minSpan} format={c.format} table />
+                <LineChart key={c.title} title={c.title} unit={c.unit} points={c.points} zero={c.zero} minSpan={c.minSpan} format={c.format} health={c.health} table />
               ))}
             </div>
           )}
@@ -205,8 +205,8 @@ function CategoryRow({ view }: { view: CategoryView }) {
 }
 
 /** Every sensor recorded during the run, plus the standard ones this device doesn't have. */
-function SensorsCard({ telemetry }: { telemetry: NonNullable<RunResult["telemetry"]> }) {
-  const charts = sensorCharts(telemetry.sensors);
+function SensorsCard({ telemetry, os }: { telemetry: NonNullable<RunResult["telemetry"]>; os: string }) {
+  const charts = sensorCharts(telemetry.sensors, os);
   const missing = missingSensors(telemetry.sensors);
   const series = new Map(telemetry.series.map((s) => [s.key, s.points]));
   return (
@@ -228,6 +228,7 @@ function SensorsCard({ telemetry }: { telemetry: NonNullable<RunResult["telemetr
               points={series.get(c.key) ?? []}
               zero={c.zero} minSpan={c.minSpan}
               format={c.format}
+              health={c.health}
               empty={c.empty === "No readings yet" ? "No readings during this run" : c.empty}
               table
             />

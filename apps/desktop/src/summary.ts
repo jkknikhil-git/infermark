@@ -2,7 +2,7 @@
 // Speed and Responsiveness, each with a headline number and the per-model details.
 
 import type { Metric, ModuleRecord, RunResult } from "./api";
-import { sensorCharts } from "./sensor-charts";
+import { healthFor, sensorCharts, speedHealth, type Health } from "./sensor-charts";
 
 export type CategoryId = "speed" | "responsiveness" | "endurance" | "efficiency" | "quality";
 
@@ -87,6 +87,7 @@ export interface CategoryChart {
   zero: boolean;
   minSpan: number;
   format?: (value: number) => string;
+  health?: Health;
 }
 
 /** Metrics like `qwen3-0.6b-q4/gen_tps` labelled "Qwen3 0.6B · Generation" are grouped by model. */
@@ -187,20 +188,21 @@ function chartsFor(category: CategoryId, records: ModuleRecord[], result: RunRes
     points: s.points,
     zero: s.y_unit === "tok/s",
     minSpan: s.y_unit === "%" ? 5 : 0,
+    health: s.y_unit === "tok/s" ? speedHealth(s.points) : s.y_unit === "%" && /charge/i.test(s.label) ? healthFor("battery.battery-charge") : undefined,
   }));
   // The run's sensors during this module only, on the module's own clock.
   const telemetry = result.telemetry;
   if (!telemetry || record.offset_ms === undefined) return charts;
   const from = record.offset_ms / 1000;
   const to = from + record.duration_ms / 1000;
-  const specs = new Map(sensorCharts(telemetry.sensors).map((c) => [c.key, c]));
+  const specs = new Map(sensorCharts(telemetry.sensors, result.hardware.os.family).map((c) => [c.key, c]));
   for (const keys of CATEGORY_SENSORS[category] ?? []) {
     for (const key of keys) {
       const series = telemetry.series.find((s) => s.key === key);
       const spec = specs.get(key);
       const points = series?.points.filter(([t]) => t >= from && t <= to).map(([t, v]) => [t - from, v] as [number, number]);
       if (!series || !spec || !points || points.length < 2) continue;
-      charts.push({ title: spec.title, unit: spec.unit, points, zero: spec.zero, minSpan: spec.minSpan, format: spec.format });
+      charts.push({ title: spec.title, unit: spec.unit, points, zero: spec.zero, minSpan: spec.minSpan, format: spec.format, health: spec.health });
       break;
     }
   }
