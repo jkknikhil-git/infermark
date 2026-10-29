@@ -45,7 +45,7 @@ indexmap = { version = "2", features = ["serde"] }
 schemars = { version = "0.8", features = ["indexmap2", "chrono", "uuid1"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 dirs = "6"
 clap = { version = "4", features = ["derive"] }
