@@ -25,6 +25,11 @@ llama-cpp-2 = { version = "=0.1.160", default-features = false, features = ["ope
 llama-cpp-sys-2 = { version = "=0.1.160", default-features = false, optional = true }
 sysinfo = { workspace = true, optional = true }
 
+# Android: link the C++ runtime statically. llama.cpp is the app's only C++ code, and the
+# NDK's default `libc++_shared.so` isn't packaged into the APK.
+[target.'cfg(target_os = "android")'.dependencies]
+llama-cpp-sys-2 = { version = "=0.1.160", default-features = false, features = ["static-stdcxx"], optional = true }
+
 [features]
 default = []
 # llama.cpp linked into the process instead of run as `llama-server` (needed on phones).
