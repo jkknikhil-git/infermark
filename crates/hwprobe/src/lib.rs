@@ -10,7 +10,7 @@ mod nvidia;
 pub use battery::{power_saver, read_battery, BatteryReading};
 
 use infermark_sdk::{
-    BatteryInfo, CpuInfo, HardwareInfo, MemoryInfo, OsFamily, OsInfo, PowerSource,
+    BatteryInfo, CpuCluster, CpuInfo, HardwareInfo, MemoryInfo, OsFamily, OsInfo, PowerSource,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -81,6 +81,7 @@ pub fn probe() -> HardwareInfo {
 
 fn cpu_info(sys: &System) -> CpuInfo {
     let first = sys.cpus().first();
+    let clusters = cpu::clusters();
     CpuInfo {
         brand: first
             .map(|c| c.brand().trim().to_string())
@@ -88,10 +89,23 @@ fn cpu_info(sys: &System) -> CpuInfo {
             .unwrap_or_else(|| "Unknown CPU".into()),
         vendor: first.map(|c| c.vendor_id().to_string()).unwrap_or_default(),
         physical_cores: sys.physical_core_count().map(|c| c as u32),
-        logical_cores: sys.cpus().len() as u32,
+        logical_cores: logical_cores(sys.cpus().len(), &clusters),
         frequency_mhz: first.map(|c| c.frequency()).filter(|f| *f > 0),
-        clusters: cpu::clusters(),
+        clusters,
     }
+}
+
+/// sysinfo lists CPUs from `/proc/stat`, which Android blocks for apps. The cluster layout
+/// (from `/sys/devices/system/cpu`) still counts them; failing that, ask the OS.
+fn logical_cores(listed: usize, clusters: &[CpuCluster]) -> u32 {
+    if listed > 0 {
+        return listed as u32;
+    }
+    let from_clusters: u32 = clusters.iter().map(|c| c.logical_cores).sum();
+    if from_clusters > 0 {
+        return from_clusters;
+    }
+    std::thread::available_parallelism().map_or(1, |n| n.get() as u32)
 }
 
 /// Anonymous, stable id for "this hardware configuration". Free memory, battery level and
@@ -116,6 +130,30 @@ pub fn fingerprint(hw: &HardwareInfo) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn logical_cores_fall_back_when_sysinfo_lists_none() {
+        let phone = [
+            CpuCluster {
+                physical_cores: 1,
+                logical_cores: 1,
+                max_mhz: Some(3350),
+            },
+            CpuCluster {
+                physical_cores: 3,
+                logical_cores: 3,
+                max_mhz: Some(3200),
+            },
+            CpuCluster {
+                physical_cores: 4,
+                logical_cores: 4,
+                max_mhz: Some(2200),
+            },
+        ];
+        assert_eq!(logical_cores(8, &[]), 8);
+        assert_eq!(logical_cores(0, &phone), 8);
+        assert!(logical_cores(0, &[]) >= 1);
+    }
 
     #[test]
     fn probe_detects_basics() {
