@@ -133,6 +133,9 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: android-actions/setup-android@v3
+        with:
+          # The default also installs the retired `tools` package, which sdkmanager no longer has.
+          packages: platform-tools
       - name: NDK and libclang (bindgen)
         working-directory: .
         run: |

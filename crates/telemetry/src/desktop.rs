@@ -30,7 +30,9 @@ impl CpuProvider {
         let temp_component = cpu_temperature_component(&components);
         Self {
             sys,
-            load_readable: std::fs::File::open("/proc/stat").is_ok() || !cfg!(unix),
+            // sysinfo reads load from /proc/stat on Linux and Android, from OS APIs elsewhere.
+            load_readable: !cfg!(any(target_os = "linux", target_os = "android"))
+                || std::fs::File::open("/proc/stat").is_ok(),
             components,
             temp_component,
             primed: false,
