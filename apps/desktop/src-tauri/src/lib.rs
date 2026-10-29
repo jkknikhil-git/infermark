@@ -1,5 +1,9 @@
 //! Tauri commands: a thin layer over `infermark-core`, so the app and the CLI behave the same.
 
+#[cfg(target_os = "android")]
+mod android;
+mod phone;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,11 +14,11 @@ use infermark_core::engine::{self, Accel, EngineCatalog, EngineStatus, EngineSto
 use infermark_core::models::download::{self, DownloadPolicy, Progress};
 use infermark_core::models::{Catalog, ModelStore};
 use infermark_core::{
-    model_list, packs, paths, plan, preflight, profiles, run as run_benchmark, settings, Registry,
+    model_list, packs, paths, plan, preflight, profiles, run_with_sensors, settings, Registry,
     RunEvent,
 };
 use infermark_sdk::{
-    GateSettings, HardwareInfo, ModuleStatus, PlanEntry, PreflightCheck, RunResult,
+    GateSettings, HardwareInfo, ModuleStatus, PlanEntry, PreflightCheck, RunResult, SensorProvider,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -33,17 +37,66 @@ fn err(e: impl std::fmt::Display) -> String {
     format!("{e:#}")
 }
 
+/// The hardware probe plus what only the platform can tell (on Android: the battery, the power
+/// source and the chip's name, from Android's own APIs).
+fn probe_device(app: &AppHandle) -> HardwareInfo {
+    #[allow(unused_mut)]
+    let mut hw = infermark_hwprobe::probe();
+    #[cfg(target_os = "android")]
+    if let Some(s) = android::device(app).and_then(|d| d.snapshot()) {
+        phone::apply(&mut hw, &s);
+    }
+    let _ = app;
+    hw
+}
+
+fn live(app: &AppHandle) -> infermark_hwprobe::LiveStatus {
+    #[allow(unused_mut)]
+    let mut status = infermark_hwprobe::live_status();
+    #[cfg(target_os = "android")]
+    if let Some(s) = android::device(app).and_then(|d| d.snapshot()) {
+        if let Some(b) = phone::battery_info(&s) {
+            status.power_source = phone::power_source(&s);
+            status.battery = Some(b);
+        }
+    }
+    let _ = app;
+    status
+}
+
+/// Sensors for a run: the desktop providers that work here, plus Android's battery and
+/// thermal status on phones.
+fn sensors(app: &AppHandle) -> Vec<Box<dyn SensorProvider>> {
+    #[allow(unused_mut)]
+    let mut all = infermark_telemetry::default_providers();
+    #[cfg(target_os = "android")]
+    if let Some(d) = android::device(app) {
+        all.push(Box::new(android::AndroidProvider::new(d)));
+    }
+    let _ = app;
+    all
+}
+
+fn power_saver(app: &AppHandle) -> Option<bool> {
+    #[cfg(target_os = "android")]
+    if let Some(s) = android::device(app).and_then(|d| d.snapshot()) {
+        return s.power_save;
+    }
+    let _ = app;
+    infermark_hwprobe::power_saver()
+}
+
 #[tauri::command]
-async fn probe() -> HardwareInfo {
-    tauri::async_runtime::spawn_blocking(infermark_hwprobe::probe)
+async fn probe(app: AppHandle) -> HardwareInfo {
+    tauri::async_runtime::spawn_blocking(move || probe_device(&app))
         .await
         .expect("probe never panics")
 }
 
 /// Memory and power right now; the Device page polls this every couple of seconds.
 #[tauri::command]
-async fn live_status() -> infermark_hwprobe::LiveStatus {
-    tauri::async_runtime::spawn_blocking(infermark_hwprobe::live_status)
+async fn live_status(app: AppHandle) -> infermark_hwprobe::LiveStatus {
+    tauri::async_runtime::spawn_blocking(move || live(&app))
         .await
         .expect("live status never panics")
 }
@@ -61,10 +114,10 @@ fn list_profiles() -> ProfileList {
 }
 
 #[tauri::command]
-async fn plan_profile(key: String) -> CmdResult<Vec<PlanEntry>> {
+async fn plan_profile(key: String, app: AppHandle) -> CmdResult<Vec<PlanEntry>> {
     tauri::async_runtime::spawn_blocking(move || {
         let profile = profiles::resolve(&key).map_err(err)?;
-        let hw = infermark_hwprobe::probe();
+        let hw = probe_device(&app);
         Ok(plan(&profile, &Registry::builtin(), &hw))
     })
     .await
@@ -73,10 +126,18 @@ async fn plan_profile(key: String) -> CmdResult<Vec<PlanEntry>> {
 
 /// What could skew a run of this profile right now (low memory, battery saver, heat...).
 #[tauri::command]
-async fn preflight_checks(key: String) -> CmdResult<Vec<PreflightCheck>> {
+async fn preflight_checks(key: String, app: AppHandle) -> CmdResult<Vec<PreflightCheck>> {
     tauri::async_runtime::spawn_blocking(move || {
         let profile = profiles::resolve(&key).map_err(err)?;
-        Ok(preflight::check(&profile, &preflight::Inputs::current()))
+        let status = live(&app);
+        let inputs = preflight::Inputs {
+            memory: status.memory,
+            battery: status.battery,
+            power_source: status.power_source,
+            power_saver: power_saver(&app),
+            readings: preflight::sample_twice(&mut sensors(&app)),
+        };
+        Ok(preflight::check(&profile, &inputs))
     })
     .await
     .map_err(err)?
@@ -97,12 +158,29 @@ fn start_run(key: String, app: AppHandle, state: State<'_, AppState>) -> CmdResu
     }
 
     std::thread::spawn(move || {
-        let hw = infermark_hwprobe::probe();
+        let hw = probe_device(&app);
         let emitter = app.clone();
         let on_event = move |e: RunEvent| {
             let _ = emitter.emit("run-event", &e);
         };
-        let result = run_benchmark(&profile, &Registry::builtin(), &hw, &on_event, &cancel);
+        #[cfg(target_os = "android")]
+        let screen = android::device(&app);
+        #[cfg(target_os = "android")]
+        if let Some(d) = &screen {
+            d.keep_screen_on(true);
+        }
+        let result = run_with_sensors(
+            &profile,
+            &Registry::builtin(),
+            &hw,
+            &on_event,
+            &cancel,
+            sensors(&app),
+        );
+        #[cfg(target_os = "android")]
+        if let Some(d) = &screen {
+            d.keep_screen_on(false);
+        }
         match save_result(&result) {
             Ok(path) => {
                 let _ = app.emit("run-finished", summarize(&path, &result));
@@ -270,10 +348,10 @@ struct ModelsView {
 }
 
 #[tauri::command]
-async fn list_models() -> CmdResult<ModelsView> {
-    tauri::async_runtime::spawn_blocking(|| {
+async fn list_models(app: AppHandle) -> CmdResult<ModelsView> {
+    tauri::async_runtime::spawn_blocking(move || {
         let s = settings::load().map_err(err)?;
-        let hw = infermark_hwprobe::probe();
+        let hw = probe_device(&app);
         let bandwidth = model_list::latest_bandwidth(&hw.fingerprint);
         let store = ModelStore::new(s.models_dir());
         let models = model_list::list(&hw, &GateSettings::default(), bandwidth, &store);
@@ -503,7 +581,21 @@ fn set_setting(key: String, value: String) -> CmdResult<SettingsView> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(android::plugin());
+    builder
+        .setup(|_app| {
+            // Phones: keep models, results and settings in the app's own storage, which the
+            // OS removes with the app.
+            #[cfg(mobile)]
+            if std::env::var_os("INFERMARK_HOME").is_none() {
+                if let Ok(dir) = _app.path().app_data_dir() {
+                    std::env::set_var("INFERMARK_HOME", dir);
+                }
+            }
+            Ok(())
+        })
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             probe,

@@ -4,6 +4,7 @@
 mod battery;
 mod cpu;
 mod gpu;
+#[cfg(not(target_os = "android"))]
 mod nvidia;
 
 pub use battery::{power_saver, read_battery, BatteryReading};
@@ -60,6 +61,7 @@ pub fn probe() -> HardwareInfo {
     };
 
     let (mut gpus, npus) = gpu::detect(memory.total_bytes);
+    #[cfg(not(target_os = "android"))]
     nvidia::enrich(&mut gpus);
     let (battery, power_source) = battery::detect();
 

@@ -5,7 +5,9 @@ use std::time::Instant;
 
 use infermark_hwprobe::read_battery;
 use infermark_sdk::{SensorChannel, SensorKind, SensorProvider, SensorReading};
+#[cfg(not(target_os = "android"))]
 use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureSensor};
+#[cfg(not(target_os = "android"))]
 use nvml_wrapper::Nvml;
 use sysinfo::{Components, CpuRefreshKind, System};
 
@@ -13,6 +15,8 @@ use sysinfo::{Components, CpuRefreshKind, System};
 /// (Linux usually does; Windows usually only with admin rights, so it is reported missing).
 pub struct CpuProvider {
     sys: System,
+    /// Android blocks `/proc/stat` for apps, so CPU load can't be read there.
+    load_readable: bool,
     components: Components,
     temp_component: Option<usize>,
     primed: bool,
@@ -26,6 +30,7 @@ impl CpuProvider {
         let temp_component = cpu_temperature_component(&components);
         Self {
             sys,
+            load_readable: std::fs::File::open("/proc/stat").is_ok() || !cfg!(unix),
             components,
             temp_component,
             primed: false,
@@ -71,11 +76,14 @@ impl SensorProvider for CpuProvider {
     }
 
     fn channels(&self) -> Vec<SensorChannel> {
-        let mut c = vec![SensorChannel::new(
-            "cpu",
-            SensorKind::Utilization,
-            "CPU load",
-        )];
+        let mut c = Vec::new();
+        if self.load_readable {
+            c.push(SensorChannel::new(
+                "cpu",
+                SensorKind::Utilization,
+                "CPU load",
+            ));
+        }
         if self.has_clock() {
             c.push(SensorChannel::new("cpu", SensorKind::Clock, "CPU clock"));
         }
@@ -104,7 +112,10 @@ impl SensorProvider for CpuProvider {
             .collect();
         let clock = (!freqs.is_empty()).then(|| freqs.iter().sum::<f64>() / freqs.len() as f64);
 
-        let mut out = vec![SensorReading::new("cpu", SensorKind::Utilization, load)];
+        let mut out = Vec::new();
+        if self.load_readable {
+            out.push(SensorReading::new("cpu", SensorKind::Utilization, load));
+        }
         if self.has_clock() {
             out.push(SensorReading::new("cpu", SensorKind::Clock, clock));
         }
@@ -122,11 +133,13 @@ impl SensorProvider for CpuProvider {
 }
 
 /// NVIDIA GPUs through NVML (ships with the driver): load, temperature, power, clock.
+#[cfg(not(target_os = "android"))]
 pub struct NvidiaProvider {
     nvml: Option<Nvml>,
     count: u32,
 }
 
+#[cfg(not(target_os = "android"))]
 impl NvidiaProvider {
     pub fn new() -> Self {
         let nvml = Nvml::init().ok();
@@ -138,12 +151,14 @@ impl NvidiaProvider {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 impl Default for NvidiaProvider {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(not(target_os = "android"))]
 impl SensorProvider for NvidiaProvider {
     fn id(&self) -> &'static str {
         "nvidia"

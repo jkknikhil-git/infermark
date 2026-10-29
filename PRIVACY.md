@@ -18,6 +18,11 @@ Everything lives in `~/.infermark/` (or `INFERMARK_HOME`):
 
 `models/` and `engines/` can be moved to another drive with the **storage folder** setting.
 
+On Android the same folders are inside the app's private storage, which Android deletes when the
+app is uninstalled. The app reads the chip and phone model names (`Build.SOC_MODEL`,
+`Build.MODEL`) to name the hardware, the same way the CPU model is used on a computer; it does not
+read the serial number, IMEI, phone number, accounts or location.
+
 Results contain **no** usernames, hostnames, IP addresses, serial numbers or file paths. Devices are
 identified only by an anonymous hash of the hardware configuration (CPU model, GPU model, RAM size,
 OS family) that cannot be traced back to you. Messages from inference engines are scrubbed of your

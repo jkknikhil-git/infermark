@@ -147,8 +147,9 @@ Devices expose very different sensors: Windows usually hides CPU temperature fro
 users, NVIDIA GPUs report power through NVML, Android phones give battery current and a thermal
 status, iPhones only a coarse thermal state. A sensor that doesn't exist is listed under
 `sensors.missing`, and an unreadable value is skipped, so charts can say "not available on this
-device" instead of drawing zeros. Desktop providers live in `crates/telemetry`; phones will add
-their own through a Tauri mobile plugin and pass them to `core::run_with_sensors`. Try
+device" instead of drawing zeros. Desktop providers live in `crates/telemetry`. On Android the
+app adds `AndroidProvider` (`apps/desktop/src-tauri/src/android.rs`), which reads a Kotlin plugin
+in `gen/android` (`DevicePlugin.kt`) and passes it to `core::run_with_sensors`. Try
 `cargo run -p infermark-telemetry --example sensors` to see what a machine offers.
 
 The standard channels (`STANDARD_CHANNELS` in `sensor.rs`) are the ones a results screen always
@@ -162,7 +163,10 @@ accounts for, as either a chart or a "not available on this device" line:
 | `gpu.utilization`, `gpu.temperature`, `gpu.power` | %, °C, W | NVML on NVIDIA; other GPUs missing for now |
 | `battery.battery-charge`, `battery.power` | %, W | hwprobe's battery reader; drain only while discharging |
 | `battery.temperature` | °C | the same, on the few laptops that report it |
-| `device.thermal-state` | 0-3 | none yet: Android thermal status and iOS `thermalState` come with the phone builds |
+| `device.thermal-state` | 0-3 | Android `PowerManager` thermal status (the app build); none on desktop, iOS later |
+
+On Android, battery charge, drain (current × voltage while discharging) and battery temperature
+come from `BatteryManager`, and CPU load is missing because apps can't read `/proc/stat`.
 
 `ThermalState::level()` and `from_level()` convert between nominal/fair/serious/critical and the
 0-3 value a reading stores, so phones and desktops share one series format.

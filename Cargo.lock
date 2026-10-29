@@ -1815,8 +1815,10 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "infermark-core",
+ "infermark-engine",
  "infermark-hwprobe",
  "infermark-sdk",
+ "infermark-telemetry",
  "serde",
  "serde_json",
  "tauri",

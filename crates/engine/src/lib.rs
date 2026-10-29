@@ -26,6 +26,17 @@ pub use llama_inproc::LlamaInProcess;
 pub use llama_server::LlamaServer;
 pub use ollama::{Ollama, OllamaModel};
 
+/// Whether llama.cpp is compiled into this build (feature `llama-inproc`, used on phones).
+pub const INPROC_AVAILABLE: bool = cfg!(feature = "llama-inproc");
+
+/// The llama.cpp build linked into this binary, when there is one.
+pub fn inproc_build() -> Option<&'static str> {
+    #[cfg(feature = "llama-inproc")]
+    return Some(llama_inproc::LLAMA_CPP_BUILD);
+    #[cfg(not(feature = "llama-inproc"))]
+    None
+}
+
 /// Where to find the engines.
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -111,6 +122,8 @@ pub fn open_backend(kind: BackendKind, config: &EngineConfig) -> Result<Box<dyn 
 #[derive(Debug, Clone, Serialize)]
 pub struct EngineStatus {
     pub llama_cpp: Option<LlamaCppStatus>,
+    /// The llama.cpp build compiled into this app (phones); nothing to install then.
+    pub built_in: Option<String>,
     pub ollama: Option<OllamaStatus>,
 }
 
@@ -145,7 +158,11 @@ pub fn status(config: &EngineConfig) -> EngineStatus {
         version,
         models: ollama::list_models(&config.ollama_url).unwrap_or_default(),
     });
-    EngineStatus { llama_cpp, ollama }
+    EngineStatus {
+        llama_cpp,
+        built_in: inproc_build().map(String::from),
+        ollama,
+    }
 }
 
 /// Turn a ureq error into a readable message, including the server's error body.

@@ -16,6 +16,9 @@ serde_json.workspace = true
 sha2.workspace = true
 hex.workspace = true
 sysinfo.workspace = true
+
+# Android gets its battery and GPU details from the app (Android APIs), not these.
+[target.'cfg(not(target_os = "android"))'.dependencies]
 starship-battery = "0.12"
 nvml-wrapper = "0.10"
 

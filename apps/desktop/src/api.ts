@@ -232,6 +232,8 @@ export type Accel = "cpu" | "vulkan" | "cuda" | "metal";
 export interface EngineView {
   status: {
     llama_cpp: { path: string; version: string; accel: Accel | null } | null;
+    /** llama.cpp build compiled into this app (phones): nothing to install. */
+    built_in?: string | null;
     ollama: { url: string; version: string; models: { name: string; size_bytes: number }[] } | null;
   };
   builds: {

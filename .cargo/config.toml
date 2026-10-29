@@ -1,0 +1,5 @@
+[env]
+# llama.cpp on 64-bit Android phones: use the int8 dot-product instructions (ARMv8.2, in nearly
+# every phone CPU since 2018). Plain armv8-a runs quantized models several times slower. Only
+# read when building for arm64 Android.
+GGML_CPU_ARM_ARCH = "armv8.2-a+dotprod"

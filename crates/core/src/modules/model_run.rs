@@ -216,7 +216,8 @@ pub(super) fn minutes_label(seconds: f64) -> String {
     }
 }
 
-/// `auto` prefers llama.cpp when it is installed and has a model to run, then Ollama.
+/// `auto` prefers the installed `llama-server`, then llama.cpp built into this app (phones),
+/// each only when there's a downloaded model to run, then Ollama.
 fn choose_backend(
     setting: &str,
     config: &EngineConfig,
@@ -237,6 +238,9 @@ fn choose_backend(
     let has_gguf = !gguf_candidates(ctx, models_dir, &mut Vec::new()).is_empty();
     if config.llama_server().is_some() && has_gguf {
         return Ok(BackendKind::LlamaCpp);
+    }
+    if infermark_engine::INPROC_AVAILABLE && has_gguf {
+        return Ok(BackendKind::LlamaCppInProcess);
     }
     if infermark_engine::ollama::version(&config.ollama_url).is_some() {
         return Ok(BackendKind::Ollama);

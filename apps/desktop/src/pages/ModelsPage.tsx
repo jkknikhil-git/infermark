@@ -66,6 +66,7 @@ export default function ModelsPage({ onOpenSettings }: { onOpenSettings: () => v
   const models = view?.models.filter((m) => showAll || fits(m) || m.installed) ?? [];
   const hidden = (view?.models.length ?? 0) - models.length;
   const llama = engine?.status.llama_cpp;
+  const builtIn = engine?.status.built_in;
   const recommended = engine?.builds.find((b) => b.recommended);
   const engineProgress = progress["engine"];
 
@@ -96,14 +97,19 @@ export default function ModelsPage({ onOpenSettings }: { onOpenSettings: () => v
           <h2 className="title-medium" style={{ flex: 1 }}>
             Inference engine
           </h2>
-          {llama && (
+          {(llama || builtIn) && (
             <span className="chip success">
               <Icon name="check" />
               Ready
             </span>
           )}
         </div>
-        {llama ? (
+        {builtIn && !llama ? (
+          <dl className="kv body-medium">
+            <dt>llama.cpp</dt>
+            <dd>{builtIn} · built into this app, runs on the CPU</dd>
+          </dl>
+        ) : llama ? (
           <dl className="kv body-medium">
             <dt>llama.cpp</dt>
             <dd>

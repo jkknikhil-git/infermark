@@ -21,7 +21,12 @@ tauri = { version = "2", features = [] }
 infermark-sdk.workspace = true
 infermark-core.workspace = true
 infermark-hwprobe.workspace = true
+infermark-telemetry.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
 uuid.workspace = true
+
+# Phones can't run `llama-server`, so llama.cpp is linked into the app there.
+[target.'cfg(target_os = "android")'.dependencies]
+infermark-engine = { workspace = true, features = ["llama-inproc"] }

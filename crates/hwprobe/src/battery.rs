@@ -1,7 +1,14 @@
+//! Battery and power. On Android the app reads these through Android's own APIs (a Tauri
+//! plugin) and fills them in, so the readers here report nothing there.
+
 use infermark_sdk::{BatteryInfo, PowerSource};
+#[cfg(not(target_os = "android"))]
 use starship_battery::units::energy::watt_hour;
+#[cfg(not(target_os = "android"))]
 use starship_battery::units::power::watt;
+#[cfg(not(target_os = "android"))]
 use starship_battery::units::thermodynamic_temperature::degree_celsius;
+#[cfg(not(target_os = "android"))]
 use starship_battery::State;
 
 /// One reading of the first battery, for telemetry. Unrounded.
@@ -15,6 +22,13 @@ pub struct BatteryReading {
 }
 
 /// `None` when this device has no battery or it can't be read right now.
+#[cfg(target_os = "android")]
+pub fn read_battery() -> Option<BatteryReading> {
+    None
+}
+
+/// `None` when this device has no battery or it can't be read right now.
+#[cfg(not(target_os = "android"))]
 pub fn read_battery() -> Option<BatteryReading> {
     let manager = starship_battery::Manager::new().ok()?;
     let b = manager.batteries().ok()?.flatten().next()?;
@@ -41,6 +55,12 @@ pub fn detect() -> (Option<BatteryInfo>, PowerSource) {
     (battery, power)
 }
 
+#[cfg(target_os = "android")]
+fn first_battery() -> Option<BatteryInfo> {
+    None
+}
+
+#[cfg(not(target_os = "android"))]
 fn first_battery() -> Option<BatteryInfo> {
     let manager = starship_battery::Manager::new().ok()?;
     let battery = manager.batteries().ok()?.flatten().next()?;
@@ -53,6 +73,7 @@ fn first_battery() -> Option<BatteryInfo> {
     })
 }
 
+#[cfg(not(target_os = "android"))]
 fn positive(v: f64) -> Option<f64> {
     (v > 0.0).then_some((v * 10.0).round() / 10.0)
 }

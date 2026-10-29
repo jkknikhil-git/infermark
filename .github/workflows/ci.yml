@@ -112,6 +112,54 @@ jobs:
         run: npm run build
       - name: Build desktop app (no bundle)
         run: npx tauri build --no-bundle
+      - name: App tests
+        working-directory: apps/desktop/src-tauri
+        run: cargo test
+
+  # The Android app: llama.cpp compiled for arm64 with the NDK and linked in. Debug-signed and
+  # sideload-only; the APK is kept for a week so it can be tried on a phone.
+  android:
+    name: Android APK (aarch64)
+    runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: 27.3.13750724
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: NDK and libclang (bindgen)
+        working-directory: .
+        run: |
+          sdkmanager --install "ndk;$NDK_VERSION"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android
+      - run: npm ci
+      - name: Build debug APK
+        run: npx tauri android build --apk --target aarch64 --debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: infermark-android-debug-apk
+          path: apps/desktop/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          retention-days: 7
+          if-no-files-found: error
 
   supply-chain:
     name: Dependency audit (cargo-deny)
