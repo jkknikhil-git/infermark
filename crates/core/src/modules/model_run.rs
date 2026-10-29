@@ -635,7 +635,8 @@ mod tests {
         let plan = LoopPlan {
             prompt_tokens: 64,
             gen_tokens: 8,
-            duration: Duration::from_millis(60),
+            // Generous: CI's macOS runners can oversleep 5 ms sleeps several times over.
+            duration: Duration::from_millis(250),
         };
         let mut seen = 0;
         let loops = generation_loop(
