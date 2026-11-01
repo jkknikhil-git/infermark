@@ -157,7 +157,7 @@ jobs:
       - run: npm ci
       - name: Build debug APK
         run: npx tauri android build --apk --target aarch64 --debug
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: infermark-android-debug-apk
           path: apps/desktop/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
