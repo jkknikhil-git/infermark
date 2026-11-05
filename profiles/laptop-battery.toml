@@ -1,7 +1,7 @@
-# Laptop battery: how long can you chat with a local model on battery?
+# Battery: how long can you chat with a local model on battery?
 # Unplug the charger before starting.
 schema = 1
-name = "Laptop battery"
+name = "Battery"
 description = "Unplug first. Measures battery drain per 10k tokens and estimates hours of local chat."
 
 [run]

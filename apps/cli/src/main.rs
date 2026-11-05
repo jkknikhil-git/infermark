@@ -354,14 +354,14 @@ fn models_command(action: Option<ModelsAction>, json: bool) -> Result<()> {
     match action {
         None => {
             let hw = infermark_hwprobe::probe();
-            let bandwidth = model_list::latest_bandwidth(&hw.fingerprint);
-            let entries = model_list::list(&hw, &GateSettings::default(), bandwidth, &store);
+            let speed = model_list::speed_basis(&hw);
+            let entries = model_list::list(&hw, &GateSettings::default(), speed, &store);
             if json {
                 println!("{}", serde_json::to_string_pretty(&entries)?);
                 return Ok(());
             }
             println!("Models folder: {}", store.root().display());
-            if bandwidth.is_none() {
+            if speed.is_none() {
                 println!("(Run a benchmark once so speed can be predicted.)");
             }
             for e in &entries {

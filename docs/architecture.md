@@ -93,7 +93,8 @@ impl BenchModule for HelloModule {
 ```text
 catalog/models.toml ──► hardware gate ──► download (HTTPS, allow-listed hosts, SHA-256) ──► models/
                          │  memory = (weights + KV cache) × 1.15
-                         │  speed  ≈ measured bandwidth × 0.6 ÷ bytes per token
+                         │  speed  ≈ a measured model's speed × its size ÷ bytes per token
+                         │           (no run yet: bandwidth × 0.6, phones 0.3, ÷ bytes per token)
                          ▼
 inference-perf ──► Backend ──► llama-server on 127.0.0.1 (random port + API key)   [llama-cpp]
                            ├─► llama.cpp linked in-process (feature llama-inproc)  [llama-cpp-inproc]

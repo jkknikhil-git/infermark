@@ -13,5 +13,5 @@ pub mod gguf;
 pub mod store;
 
 pub use catalog::{Catalog, CatalogModel};
-pub use gate::{assess, ModelShape, Tier, Verdict};
+pub use gate::{assess, ModelShape, SpeedBasis, Tier, Verdict};
 pub use store::ModelStore;

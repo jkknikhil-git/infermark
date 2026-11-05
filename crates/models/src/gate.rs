@@ -3,14 +3,15 @@
 //! ```text
 //! needed  = (weights + KV cache for the context) × 1.15 overhead
 //! budget  = GPU memory × margin  (+ system RAM × margin when layers can be offloaded)
-//! speed   ≈ memory bandwidth × 0.6 ÷ bytes read per token
+//! speed   ≈ measured model speed × its size ÷ bytes read per token, once a model has run here
+//!         ≈ memory bandwidth × 0.6 (phones 0.3) ÷ bytes read per token, until then
 //! ```
 //!
-//! Token generation reads every active weight once per token, so memory bandwidth is the best
-//! single predictor of tokens/sec. Predictions are deliberately rough; they only decide what is
-//! worth running, never what a result says.
+//! Token generation reads every active weight once per token, so speed falls with model size and
+//! memory bandwidth is the best guess before anything has run. Predictions are deliberately
+//! rough; they only decide what is worth running, never what a result says.
 
-use infermark_sdk::{GateSettings, HardwareInfo};
+use infermark_sdk::{GateSettings, HardwareInfo, OsFamily};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +20,17 @@ const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
 pub const OVERHEAD: f64 = 0.15;
 /// Share of measured (STREAM) bandwidth that token generation reaches in practice.
 pub const BANDWIDTH_EFFICIENCY: f64 = 0.6;
+/// The same on phones. A Dimensity 8350 measured 27.9 GB/s but 19 tok/s on a 0.4 GB model: 0.27.
+pub const PHONE_BANDWIDTH_EFFICIENCY: f64 = 0.3;
+
+/// What a speed prediction starts from, in 10^9 bytes/s.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpeedBasis {
+    /// Memory bandwidth, e.g. the best of the memory-speed module's copy and triad.
+    Bandwidth(f64),
+    /// Weights a model really read on this device: its tokens/sec × its file size.
+    Measured(f64),
+}
 
 /// The architecture numbers that decide memory use.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -101,26 +113,31 @@ impl Verdict {
     }
 }
 
-/// Assess one model. `system_bandwidth_gbps` is the measured memory bandwidth (10^9 bytes/s),
-/// e.g. the `triad_gbps` metric from the memory-speed module, if available.
+/// Assess one model. `speed` is what to predict its tokens/sec from, if anything is known yet.
 pub fn assess(
     file_bytes: u64,
     shape: &ModelShape,
     context: u32,
     hw: &HardwareInfo,
     gate: &GateSettings,
-    system_bandwidth_gbps: Option<f64>,
+    speed: Option<SpeedBasis>,
 ) -> Verdict {
     let needed = memory_needed(file_bytes, shape, context);
     let margin = gate.memory_margin_for(hw.os.family);
     let ram_budget = (hw.memory.total_bytes as f64 * margin) as u64;
     let vram_budget = (hw.max_dedicated_vram_bytes() as f64 * margin) as u64;
     let active = shape.active_fraction.unwrap_or(1.0).clamp(0.01, 1.0);
-    let predict = |bytes_in_ram: u64| {
-        system_bandwidth_gbps.filter(|b| *b > 0.0).map(|bw| {
-            let per_token = (bytes_in_ram as f64 * active).max(1.0);
-            bw * 1e9 * BANDWIDTH_EFFICIENCY / per_token
+    let reads_per_sec = speed
+        .map(|basis| match basis {
+            SpeedBasis::Measured(gbps) => gbps,
+            SpeedBasis::Bandwidth(gbps) => match hw.os.family {
+                OsFamily::Android | OsFamily::Ios => gbps * PHONE_BANDWIDTH_EFFICIENCY,
+                _ => gbps * BANDWIDTH_EFFICIENCY,
+            },
         })
+        .filter(|gbps| *gbps > 0.0);
+    let predict = |bytes_in_ram: u64| {
+        reads_per_sec.map(|gbps| gbps * 1e9 / (bytes_in_ram as f64 * active).max(1.0))
     };
 
     let (tier, budget, predicted, summary) = if vram_budget > 0 && needed <= vram_budget {
@@ -201,7 +218,7 @@ fn gb(bytes: u64) -> String {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use infermark_sdk::{CpuInfo, GpuInfo, GpuVendor, MemoryInfo, OsFamily, OsInfo, PowerSource};
+    use infermark_sdk::{CpuInfo, GpuInfo, GpuVendor, MemoryInfo, OsInfo, PowerSource};
 
     pub(crate) fn device(ram_gb: f64, gpu: Option<(f64, bool)>) -> HardwareInfo {
         let gib = |g: f64| (g * GIB) as u64;
@@ -281,7 +298,7 @@ pub(crate) mod tests {
             2048,
             &device(16.0, None),
             &GateSettings::default(),
-            Some(25.0),
+            Some(SpeedBasis::Bandwidth(25.0)),
         );
         assert_eq!(v.tier, Tier::TooBig);
         assert!(!v.runnable(&GateSettings::default()));
@@ -302,7 +319,17 @@ pub(crate) mod tests {
         let mut phone = device(4.0, None);
         phone.os.family = OsFamily::Android;
         let gate = GateSettings::default();
-        let on = |hw: &HardwareInfo| assess(Q4_3B, &SHAPE_3B, 4096, hw, &gate, Some(25.0)).tier;
+        let on = |hw: &HardwareInfo| {
+            assess(
+                Q4_3B,
+                &SHAPE_3B,
+                4096,
+                hw,
+                &gate,
+                Some(SpeedBasis::Bandwidth(25.0)),
+            )
+            .tier
+        };
         assert_ne!(on(&desktop), Tier::TooBig);
         assert_eq!(on(&phone), Tier::TooBig);
         // A profile can still set its own margin.
@@ -311,7 +338,15 @@ pub(crate) mod tests {
             ..Default::default()
         };
         assert_ne!(
-            assess(Q4_3B, &SHAPE_3B, 4096, &phone, &lenient, Some(25.0)).tier,
+            assess(
+                Q4_3B,
+                &SHAPE_3B,
+                4096,
+                &phone,
+                &lenient,
+                Some(SpeedBasis::Bandwidth(25.0))
+            )
+            .tier,
             Tier::TooBig
         );
     }
@@ -324,13 +359,46 @@ pub(crate) mod tests {
             2048,
             &device(16.0, Some((0.125, true))),
             &GateSettings::default(),
-            Some(25.0),
+            Some(SpeedBasis::Bandwidth(25.0)),
         );
         assert_eq!(v.tier, Tier::SystemMemory);
         assert!(v.summary.contains("integrated GPU"));
         // 25 GB/s × 0.6 ÷ 2.0 GB ≈ 7.4 tokens/s
         let tps = v.predicted_tokens_per_sec.unwrap();
         assert!((7.0..8.0).contains(&tps), "{tps}");
+    }
+
+    #[test]
+    fn phones_get_less_out_of_their_bandwidth() {
+        let mut phone = device(8.0, None);
+        phone.os.family = OsFamily::Android;
+        let gate = GateSettings::default();
+        let speed = |hw: &HardwareInfo, basis| {
+            assess(396_705_472, &SHAPE_3B, 1024, hw, &gate, Some(basis))
+                .predicted_tokens_per_sec
+                .unwrap()
+        };
+        // 27.9 GB/s × 0.3 ÷ 0.397 GB: about 21 tok/s on the phone (it measured 19 to 22).
+        let tps = speed(&phone, SpeedBasis::Bandwidth(27.9));
+        assert!((20.0..22.0).contains(&tps), "{tps}");
+        let laptop = speed(&device(16.0, None), SpeedBasis::Bandwidth(27.9));
+        assert!((laptop / tps - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_measured_speed_scales_with_model_size_alone() {
+        let mut phone = device(8.0, None);
+        phone.os.family = OsFamily::Android;
+        // 19.2 tok/s on the 0.397 GB model.
+        let basis = SpeedBasis::Measured(19.2 * 396_705_472.0 / 1e9);
+        let gate = GateSettings::default();
+        let speed = |bytes| {
+            assess(bytes, &SHAPE_3B, 1024, &phone, &gate, Some(basis))
+                .predicted_tokens_per_sec
+                .unwrap()
+        };
+        assert!((speed(396_705_472) - 19.2).abs() < 1e-6);
+        assert!((speed(793_410_944) - 9.6).abs() < 1e-6);
     }
 
     #[test]
@@ -341,7 +409,14 @@ pub(crate) mod tests {
             assess(Q4_3B, &SHAPE_3B, 2048, &hw, &gate, None).tier,
             Tier::FullGpu
         );
-        let v = assess(9_000_000_000, &SHAPE_70B, 2048, &hw, &gate, Some(50.0));
+        let v = assess(
+            9_000_000_000,
+            &SHAPE_70B,
+            2048,
+            &hw,
+            &gate,
+            Some(SpeedBasis::Bandwidth(50.0)),
+        );
         assert_eq!(v.tier, Tier::PartialOffload);
         assert!(v.predicted_tokens_per_sec.is_some());
     }
@@ -358,7 +433,7 @@ pub(crate) mod tests {
             2048,
             &device(16.0, None),
             &gate,
-            Some(25.0),
+            Some(SpeedBasis::Bandwidth(25.0)),
         );
         assert_eq!(v.tier, Tier::TooSlow);
         assert!(
@@ -386,7 +461,7 @@ pub(crate) mod tests {
             2048,
             &device(16.0, None),
             &GateSettings::default(),
-            Some(25.0),
+            Some(SpeedBasis::Bandwidth(25.0)),
         );
         let moe_shape = ModelShape {
             active_fraction: Some(0.25),
@@ -398,7 +473,7 @@ pub(crate) mod tests {
             2048,
             &device(16.0, None),
             &GateSettings::default(),
-            Some(25.0),
+            Some(SpeedBasis::Bandwidth(25.0)),
         );
         let ratio = moe.predicted_tokens_per_sec.unwrap() / dense.predicted_tokens_per_sec.unwrap();
         assert!((ratio - 4.0).abs() < 1e-6);

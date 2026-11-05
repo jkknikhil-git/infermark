@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use infermark_engine::{open_backend, BackendKind, EngineConfig};
-use infermark_models::{assess, gguf, Catalog, ModelShape, ModelStore, Verdict};
+use infermark_models::{assess, gguf, Catalog, ModelShape, ModelStore, SpeedBasis, Verdict};
 use infermark_sdk::{
     Backend, GenerateRequest, HardwareInfo, LoadOptions, ModelSpec, ModuleError, OsFamily,
     RunContext,
@@ -66,7 +66,7 @@ pub(super) fn select_models(
             context,
             ctx.hardware,
             &ctx.profile.gate,
-            bandwidth,
+            bandwidth.map(SpeedBasis::Bandwidth),
         );
         if v.runnable(&ctx.profile.gate) {
             true

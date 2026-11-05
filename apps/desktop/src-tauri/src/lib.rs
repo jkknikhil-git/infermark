@@ -343,7 +343,7 @@ struct ModelsView {
     models_dir: PathBuf,
     /// Free space on the drive that holds the models folder.
     free_bytes: Option<u64>,
-    /// Whether speed predictions are available (needs one memory-speed result).
+    /// Whether speed predictions are available (needs one saved memory-speed or model result).
     speed_known: bool,
 }
 
@@ -352,15 +352,15 @@ async fn list_models(app: AppHandle) -> CmdResult<ModelsView> {
     tauri::async_runtime::spawn_blocking(move || {
         let s = settings::load().map_err(err)?;
         let hw = probe_device(&app);
-        let bandwidth = model_list::latest_bandwidth(&hw.fingerprint);
+        let speed = model_list::speed_basis(&hw);
         let store = ModelStore::new(s.models_dir());
-        let models = model_list::list(&hw, &GateSettings::default(), bandwidth, &store);
+        let models = model_list::list(&hw, &GateSettings::default(), speed, &store);
         let free_bytes = existing_ancestor(store.root()).and_then(|p| download::free_space(&p));
         Ok(ModelsView {
             models,
             models_dir: store.root().to_path_buf(),
             free_bytes,
-            speed_known: bandwidth.is_some(),
+            speed_known: speed.is_some(),
         })
     })
     .await

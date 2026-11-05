@@ -74,7 +74,7 @@ export const profiles: ProfileEntry[] = [
   ["quick", "Quick", "About 5 minutes. Hardware check, memory speed and one small model."],
   ["standard", "Standard", "About 30 minutes. Speed, context scaling, a short endurance test and core quality packs."],
   ["full", "Full", "Everything your device can run: all eligible models, all packs, 20-minute endurance test."],
-  ["laptop-battery", "Laptop battery", "Unplug first. Measures battery drain per 10k tokens and estimates hours of local chat."],
+  ["laptop-battery", "Battery", "Unplug first. Measures battery drain per 10k tokens and estimates hours of local chat."],
 ].map(([key, name, description]) => ({
   key,
   source: { kind: "builtin" as const },

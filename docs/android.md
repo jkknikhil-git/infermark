@@ -55,6 +55,17 @@ current and voltage. That matters, because phone makers don't agree on which sig
 has, so it's the first thing to check on a new phone. What we don't know yet is how much of
 that 4.4 W is the screen, which stays on during a run.
 
+### Predicted speeds
+
+The Models page used to promise about 36 tok/s for that model on this phone, when every run
+measured 19 to 22. The estimate was memory bandwidth × 0.6 ÷ model size, and that 0.6 came from
+laptops. Here, 27.9 GB/s and 19 tok/s on a 0.4 GB model work out to about 0.27.
+
+So now, once a model has really run on a device, predictions start from that: the best recent
+speed, scaled by model size. Until then phones use 0.3 instead of 0.6. Here's what's still
+unknown: we've only measured one model on this phone, so we haven't confirmed that a bigger model
+slows down in proportion. Treat the "~" on those numbers as a real "about".
+
 ## What's different on a phone
 
 Here's the thing: a phone app can do far less than a desktop program, and InferMark has to work
